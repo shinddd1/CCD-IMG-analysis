@@ -166,48 +166,6 @@ def on_click(event):
 def on_key(event):
     global PIXEL_SIZE
     
-    # 'z' 키: ROI margin 토글 (50 <-> 20)
-    if event.key.lower() == 'z':
-        if event.inaxes:
-            for ax_img_key in axis_data_map:
-                if ax_img_key == event.inaxes:
-                    ax_data = axis_data_map[ax_img_key]
-                    
-                    # 현재 margin 가져오기 (없으면 50으로 초기화)
-                    current_margin = ax_data.get('current_margin', 50)
-                    
-                    # margin 토글
-                    new_margin = 20 if current_margin == 50 else 50
-                    
-                    # frame_override.json에 업데이트
-                    idx = ax_data['idx']
-                    current_frame = ax_data['current_frame']
-                    save_frame_override(idx, current_frame, margin=new_margin)
-                    
-                    print(f"[Margin 변경] Plot {idx+1} -> Margin {new_margin}픽셀")
-                    
-                    # 프로그램 재시작
-                    restart_program()
-                    break
-    
-    # 'r' 또는 'R' 키: ROI margin을 50으로 리셋
-    if event.key.lower() == 'r':
-        if event.inaxes:
-            for ax_img_key in axis_data_map:
-                if ax_img_key == event.inaxes:
-                    ax_data = axis_data_map[ax_img_key]
-                    
-                    # margin을 50으로 리셋하고 frame_override.json에 업데이트
-                    idx = ax_data['idx']
-                    current_frame = ax_data['current_frame']
-                    save_frame_override(idx, current_frame, margin=50)
-                    
-                    print(f"[Margin 리셋] Plot {idx+1} -> Margin 50픽셀")
-                    
-                    # 프로그램 재시작
-                    restart_program()
-                    break
-    
     if event.key.lower() == 'u':
         global PIXEL_SIZE, TICK_INTERVAL
         
