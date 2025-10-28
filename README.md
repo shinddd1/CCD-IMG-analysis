@@ -12,8 +12,6 @@ CCD 이미지 분석 및 강도 측정을 위한 Python 프로그램입니다. S
 - **프레임 분석**: 다중 프레임 이미지에서 최적 프레임 자동 선택
 - **Interactive 조정**: 
   - `u` 키: 픽셀 크기 및 눈금 간격 조정
-  - `z` 키: ROI margin 토글 (50 ↔ 20)
-  - `r` 키: ROI margin 리셋 (50으로)
   - 더블클릭: 프레임 변경
   - Colorbar 더블클릭: 강도 범위 조정
 
@@ -68,8 +66,6 @@ pip install numpy matplotlib opencv-python pandas scipy
 ## 키보드 단축키
 
 - `u`: 픽셀 크기 및 눈금 간격 조정
-- `z`: ROI margin 토글 (50 ↔ 20)
-- `r`: ROI margin 리셋 (50으로)
 
 ## 라이선스
 
