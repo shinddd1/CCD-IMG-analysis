@@ -16,9 +16,34 @@ import tempfile
 import time
 import threading
 
+# Import ROI analysis module
+try:
+    from roi_analysis import (
+        detect_beam_shape,
+        fit_ellipse_roi,
+        fit_fan_shape_roi,
+        calculate_roi_complex,
+        calculate_integrated_intensity
+    )
+except ImportError:
+    print("Warning: roi_analysis module not found. Using default ellipse fitting only.")
+
 # ── Global Variables & Setup ──
 PIXEL_SIZE = 0.5        # Initial μm/px conversion factor
-TICK_INTERVAL = 50.0    # Tick interval in μm
+TICK_INTERVAL = 2.0    # Tick interval in μm
+BEAM_SHAPE_MODE = 'ellipse'  # 'ellipse' or 'fan' - beam fitting mode
+
+# === EUV Power Calculation Parameters (User Modify) ===
+CCD_Gain_Para = 1.0
+Laser_Rep_Rate = 150000  # Hz
+Num_of_Pulses = 150000
+E_photon_eV = 91.4  # eV
+QE = 0.84  # Quantum Efficiency
+Filter_Trans = 0.008   # Filter Transmittance
+ML_Reflect = 0.65  # Mirror Reflectance
+Optical_Coll_Eff = 1.0  # Optical Collection Efficiency
+Ar_Trans = 0.96649 # Ar Transmittance
+e_charge_C = 1.602e-19 # Elementary charge in Coulombs
 
 # To store axis-specific data, including references to colorbars for dynamic updates
 axis_data_map = {}
@@ -64,6 +89,23 @@ def restart_program():
     except Exception as e:
         print(f"재시작 오류: {e}")
         print("수동으로 재시작해주세요: python " + script_path)
+
+# === Beam Shape Selection Function ===
+def ask_beam_shape():
+    """Program start dialog to select beam shape (pinhole or fan)"""
+    root = tk.Tk()
+    root.withdraw()
+    
+    result = messagebox.askyesno(
+        "Beam Shape Selection",
+        "핀홀이 있나요?\n\n"
+        "YES: 타원 피팅 (핀홀 사용)\n"
+        "NO: 부채꼴 피팅 (핀홀 없음)",
+        icon='question'
+    )
+    
+    root.destroy()
+    return 'ellipse' if result else 'fan'
 
 # === Frame Persistence Functions ===
 def load_frame_overrides():
@@ -165,6 +207,14 @@ def on_click(event):
 
 def on_key(event):
     global PIXEL_SIZE
+    
+    if event.key.lower() == 's':
+        # Switch between ellipse and fan fitting
+        global BEAM_SHAPE_MODE
+        BEAM_SHAPE_MODE = 'fan' if BEAM_SHAPE_MODE == 'ellipse' else 'ellipse'
+        print(f"[빔 모양 변경] {BEAM_SHAPE_MODE} 모드")
+        # 재시작
+        restart_program()
     
     if event.key.lower() == 'u':
         global PIXEL_SIZE, TICK_INTERVAL
@@ -373,6 +423,7 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
         "FWHM Major (μm)": None, "FWHM Minor (μm)": None,
         "Collected Power": None,
         "CCD Power": None,
+        "CCD Counts": None,
         "Error": None
     }
 
@@ -441,7 +492,27 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
                             if np.any(mask_ellipse):
                                 area_e2 = np.sum(mask_ellipse)
                                 mean_intensity_e2 = np.mean(roi[mask_ellipse])
-                                ellipse_data["Collected Power"] = float(mean_intensity_e2 * area_e2)
+                                ccd_counts = float(np.sum(roi[mask_ellipse]))
+                                ellipse_data["CCD Counts"] = ccd_counts
+
+                                # EUV Power Calculation
+                                numerator = (
+                                    ccd_counts
+                                    * CCD_Gain_Para
+                                    * (Laser_Rep_Rate / Num_of_Pulses)
+                                    * E_photon_eV
+                                    * e_charge_C
+                                    * 1000
+                                    / (E_photon_eV / 3.62)
+                                )
+                                denominator = (
+                                    QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
+                                )
+                                if denominator > 0:
+                                    euv_power_mW = numerator / denominator
+                                else:
+                                    euv_power_mW = 0
+                                ellipse_data["Collected Power"] = euv_power_mW
 
                             # --- FWHM 타원 평균 intensity & Power 계산 ---
                             # FWHM 계산
@@ -524,6 +595,7 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
     "FWHM Minor (μm)": None,
     "Collected Power": None,  # 1/e² 타원 내부 총 광자 수 또는 에너지
     "CCD Power": None,  # FWHM 타원 내부 총 광자 수 또는 에너지
+    "CCD Counts": None,
     "Error": None
     }
     try:
@@ -682,12 +754,27 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                             y_rot_e2 = -(xx - x0_e2) * np.sin(angle_rad_e2) + (yy - y0_e2) * np.cos(angle_rad_e2)
                             mask_ellipse = ((x_rot_e2 / (maj/2))**2 + (y_rot_e2 / (minr/2))**2) <= 1
                             if np.any(mask_ellipse):
-                                # 타원 면적 (픽셀 수)
-                                area_e2 = np.sum(mask_ellipse)
-                                # 타원 내부 평균 강도
-                                mean_intensity_e2 = np.mean(roi[mask_ellipse])
-                                # 총 Power (광자 수 또는 에너지)
-                                ellipse_data["Collected Power"] = float(mean_intensity_e2 * area_e2)
+                                ccd_counts = float(np.sum(roi[mask_ellipse]))
+                                ellipse_data["CCD Counts"] = ccd_counts
+
+                                # EUV Power Calculation
+                                numerator = (
+                                    ccd_counts
+                                    * CCD_Gain_Para
+                                    * (Laser_Rep_Rate / Num_of_Pulses)
+                                    * E_photon_eV
+                                    * e_charge_C
+                                    * 1000
+                                    / (E_photon_eV / 3.62)
+                                )
+                                denominator = (
+                                    QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
+                                )
+                                if denominator > 0:
+                                    euv_power_mW = numerator / denominator
+                                else:
+                                    euv_power_mW = 0
+                                ellipse_data["Collected Power"] = euv_power_mW
 
                             ax_img.add_patch(Ellipse((cx, cy), maj, minr, angle=angle,
                                                     edgecolor='red', lw=2, fill=False, linestyle='-',
@@ -906,18 +993,23 @@ INTENSITY_NORM = 'individual' # 'individual', 'global', or 'manual'
 directory = r"C:\Users\user\Desktop\회사 관련 서류\신동엽-LEUS\CCD IMG" # MODIFY THIS PATH
 if not os.path.isdir(directory):
     print(f"Error: Directory not found: {directory}")
-    exit()
+    sys.exit()
 file_list_orig = [f for f in os.listdir(directory) if f.lower().endswith(".spe")]
 
 if not file_list_orig:
     print(f"No .spe files found in {directory}")
-    exit()
+    sys.exit()
 
 # Sort files numerically if they follow a pattern like 'file_1.spe', 'file_10.spe'
 try:
     file_list = sorted(file_list_orig, key=lambda x: int("".join(filter(str.isdigit, os.path.splitext(x)[0])) or 0))
 except ValueError:
     file_list = sorted(file_list_orig) # Fallback to alphabetical sort
+
+# === Ask user for beam shape ===
+global BEAM_SHAPE_MODE
+BEAM_SHAPE_MODE = ask_beam_shape()
+print(f"\n[빔 모양 선택] Mode: {'타원 피팅 (핀홀)' if BEAM_SHAPE_MODE == 'ellipse' else '부채꼴 피팅 (핀홀 없음)'}")
 
 # --- STAGE 1: Pre-analyze all frames to find the best one ---
 print("="*50)
@@ -1103,8 +1195,11 @@ if __name__ == "__main__":
     fig_img.suptitle(f'Beam Profile Analysis - Colormap: {COLORMAP} (Press "u" to change μm/px, Dbl-Click image to change frame, Dbl-Click cbar for scale)', fontsize=14)
     fig_prof.suptitle(f'Line Profiles - Intensity Norm: {INTENSITY_NORM} (Best Frames Auto-Selected)', fontsize=14)
 
-    fig_img.tight_layout(rect=[0, 0, 1, 0.96], pad=2.0)
-    fig_prof.tight_layout(rect=[0, 0, 1, 0.96], pad=2.0)
+    # 아래 tight_layout 부분 등에서 VSCode/Pyright 등 linter가 'rect' 옵션(튜플이어야 함)에 리스트를 줬으니 회색으로 보일 수 있음.
+    # 원래: fig_img.tight_layout(rect=[0, 0, 1, 0.96], pad=2.0)
+    # 수정 권장: rect=(0, 0, 1, 0.96)  ← 리스트→튜플 변경 필요!
+    fig_img.tight_layout(rect=(0, 0, 1, 0.96), pad=2.0)
+    fig_prof.tight_layout(rect=(0, 0, 1, 0.96), pad=2.0)
 
     # Excel saving
     df = pd.DataFrame([res for res in results if res is not None]) # Filter out None entries if any failed critically
@@ -1117,6 +1212,8 @@ if __name__ == "__main__":
 
     # === 여기서 바로 frame_override.json 자동 생성 ===
     frame_override = {}
+    # 아래 groupby 및 'notnull', 'loc', 'idxmin' 사용에서도 'DataFrame'이 아니라 ndarray 등에 써서 linter가 회색/빨간줄 낼 수 있음!
+    # df가 진짜 DataFrame임을 확실히 하세요.
     if not df.empty and "Major Length (px)" in df and "Minor Length (px)" in df:
         for fname, group in df.groupby("Filename"):
             # 첫 번째 프레임(보통 Frame==1)은 제외
