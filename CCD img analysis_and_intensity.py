@@ -882,6 +882,8 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                             print(f"[Warning] fitted_shape is None or empty")
                                     except Exception as e:
                                         print(f"[Error computing fitted fan shape]: {e}")
+                            except Exception as e:
+                                print(f"[Error in fan fitting]: {e}")
                         
                         if len(cnt) >= 5 and BEAM_SHAPE_MODE == 'ellipse':
                             # Continue with ellipse fitting only if in ellipse mode
