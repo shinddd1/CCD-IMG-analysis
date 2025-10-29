@@ -472,6 +472,36 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
             return ellipse_data
 
         xmin, xmax, ymin, ymax = roi_coords
+        
+        # ROI를 정사각형으로 확장 (가장 긴 변에 맞춤)
+        roi_width = xmax - xmin
+        roi_height = ymax - ymin
+        max_dim = max(roi_width, roi_height)
+        
+        # 폭 확장
+        if roi_width < max_dim:
+            padding_x = (max_dim - roi_width) // 2
+            xmin = max(0, xmin - padding_x)
+            xmax = min(image_data.shape[1], xmax + padding_x)
+            # 한 쪽이라도 추가 확장 필요
+            if xmax - xmin < max_dim:
+                if xmin == 0:
+                    xmax = max_dim
+                else:
+                    xmin = xmax - max_dim
+        
+        # 높이 확장
+        if roi_height < max_dim:
+            padding_y = (max_dim - roi_height) // 2
+            ymin = max(0, ymin - padding_y)
+            ymax = min(image_data.shape[0], ymax + padding_y)
+            # 한 쪽이라도 추가 확장 필요
+            if ymax - ymin < max_dim:
+                if ymin == 0:
+                    ymax = max_dim
+                else:
+                    ymin = ymax - max_dim
+        
         roi = image_data[ymin:ymax, xmin:xmax]
         if roi.size == 0:
             ellipse_data["Error"] = "Empty ROI"
@@ -646,6 +676,36 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
             return ellipse_data # Return default data
         
         xmin_large, xmax_large, ymin_large, ymax_large = roi_coords_large
+        
+        # ROI를 정사각형으로 확장 (가장 긴 변에 맞춤)
+        roi_width = xmax_large - xmin_large
+        roi_height = ymax_large - ymin_large
+        max_dim = max(roi_width, roi_height)
+        
+        # 폭 확장
+        if roi_width < max_dim:
+            padding_x = (max_dim - roi_width) // 2
+            xmin_large = max(0, xmin_large - padding_x)
+            xmax_large = min(image_data.shape[1], xmax_large + padding_x)
+            # 한 쪽이라도 추가 확장 필요
+            if xmax_large - xmin_large < max_dim:
+                if xmin_large == 0:
+                    xmax_large = max_dim
+                else:
+                    xmin_large = xmax_large - max_dim
+        
+        # 높이 확장
+        if roi_height < max_dim:
+            padding_y = (max_dim - roi_height) // 2
+            ymin_large = max(0, ymin_large - padding_y)
+            ymax_large = min(image_data.shape[0], ymax_large + padding_y)
+            # 한 쪽이라도 추가 확장 필요
+            if ymax_large - ymin_large < max_dim:
+                if ymin_large == 0:
+                    ymax_large = max_dim
+                else:
+                    ymin_large = ymax_large - max_dim
+        
         roi_large = image_data[ymin_large:ymax_large, xmin_large:xmax_large]
         
         # axis_data_map에서 margin 정보 가져오기 (없으면 50으로 초기화)
@@ -657,14 +717,21 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
         
         # display_margin이 50이면 전체, 20이면 중심 기준 작은 영역
         if display_margin == 20:
-            # 중심 기준으로 작은 영역 crop
-            crop_size_y = min(roi_large.shape[0], int(roi_large.shape[0] * 0.4))  # 대략 20/50
-            crop_size_x = min(roi_large.shape[1], int(roi_large.shape[1] * 0.4))
+            # 중심 기준으로 작은 영역 crop (정사각형 유지)
+            crop_size = min(roi_large.shape[0], roi_large.shape[1], int(min(roi_large.shape[0], roi_large.shape[1]) * 0.4))
             
-            y0_crop = max(0, center_y - crop_size_y // 2)
-            y1_crop = min(roi_large.shape[0], center_y + crop_size_y // 2)
-            x0_crop = max(0, center_x - crop_size_x // 2)
-            x1_crop = min(roi_large.shape[1], center_x + crop_size_x // 2)
+            y0_crop = max(0, center_y - crop_size // 2)
+            y1_crop = min(roi_large.shape[0], center_y + crop_size // 2)
+            x0_crop = max(0, center_x - crop_size // 2)
+            x1_crop = min(roi_large.shape[1], center_x + crop_size // 2)
+            
+            # 정사각형 확보
+            if y1_crop - y0_crop != x1_crop - x0_crop:
+                crop_size = min(y1_crop - y0_crop, x1_crop - x0_crop)
+                y0_crop = max(0, center_y - crop_size // 2)
+                y1_crop = y0_crop + crop_size
+                x0_crop = max(0, center_x - crop_size // 2)
+                x1_crop = x0_crop + crop_size
             
             roi = roi_large[y0_crop:y1_crop, x0_crop:x1_crop]
             
