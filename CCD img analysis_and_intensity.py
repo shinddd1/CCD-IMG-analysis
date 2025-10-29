@@ -1007,7 +1007,6 @@ except ValueError:
     file_list = sorted(file_list_orig) # Fallback to alphabetical sort
 
 # === Ask user for beam shape ===
-global BEAM_SHAPE_MODE
 BEAM_SHAPE_MODE = ask_beam_shape()
 print(f"\n[빔 모양 선택] Mode: {'타원 피팅 (핀홀)' if BEAM_SHAPE_MODE == 'ellipse' else '부채꼴 피팅 (핀홀 없음)'}")
 
