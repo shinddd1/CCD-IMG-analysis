@@ -1232,8 +1232,30 @@ print("STAGE 3: 시각화 - 최적 프레임을 플롯에 표시합니다.")
 print("="*50)
     
 num_files = len(file_list)
-cols = 4 # Adjust as needed
-rows = (num_files + cols - 1) // cols
+
+# 파일 수에 따라 최적의 cols 계산
+if num_files == 1:
+    cols = 1
+    rows = 1
+elif num_files == 2:
+    cols = 2
+    rows = 1
+elif num_files <= 4:
+    cols = 2
+    rows = 2
+elif num_files <= 8:
+    cols = 4
+    rows = 2
+elif num_files <= 12:
+    cols = 4
+    rows = 3
+elif num_files <= 16:
+    cols = 4
+    rows = 4
+else:
+    # 16개 초과 시 cols=5 또는 cols=6로 조정
+    cols = 5 if num_files <= 25 else 6
+    rows = (num_files + cols - 1) // cols
 
 # Global intensity normalization (calculated once based on the first frame of each file's ROI)
 global_vmin, global_vmax = 0, 1
@@ -1269,16 +1291,39 @@ if INTENSITY_NORM == 'global':
         print("Warning: Could not gather data for global normalization. Defaulting to individual normalization or manual adjustment.")
         INTENSITY_NORM = 'individual' # Fallback
 
-fig_img, axes_img_list = plt.subplots(rows, cols, figsize=(7 * cols, 6 * rows)) # 더 작은 높이로 조정
-fig_prof, axes_prof_list = plt.subplots(rows, cols, figsize=(7 * cols, 4 * rows))
+# 파일 수에 따라 figsize 조정
+if num_files == 1:
+    fig_size_img = (8, 8)
+    fig_size_prof = (8, 6)
+elif num_files == 2:
+    fig_size_img = (14, 7)
+    fig_size_prof = (14, 5)
+elif num_files <= 4:
+    fig_size_img = (12, 12)
+    fig_size_prof = (12, 8)
+elif num_files <= 8:
+    fig_size_img = (22, 11)
+    fig_size_prof = (22, 8)
+else:
+    fig_size_img = (7 * cols, 6 * rows)
+    fig_size_prof = (7 * cols, 4 * rows)
+
+fig_img, axes_img_list = plt.subplots(rows, cols, figsize=fig_size_img)
+fig_prof, axes_prof_list = plt.subplots(rows, cols, figsize=fig_size_prof)
 
 # Flatten axes arrays for easier iteration, handle single plot case
 axes_img_flat = np.array(axes_img_list).flatten()
 axes_prof_flat = np.array(axes_prof_list).flatten()
 
-# 여백 최소화
-fig_img.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
-fig_prof.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
+# 파일 수에 따라 여백 조정
+if num_files <= 4:
+    # 적은 수의 파일: 여백 더 줄임
+    fig_img.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.1, wspace=0.2, hspace=0.35)
+    fig_prof.subplots_adjust(left=0.08, right=0.95, top=0.93, bottom=0.1, wspace=0.2, hspace=0.35)
+else:
+    # 많은 파일: 기존 여백 유지
+    fig_img.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
+    fig_prof.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
 
 fig_img.canvas.mpl_connect('button_press_event', on_click)
 fig_img.canvas.mpl_connect('key_press_event', on_key)
