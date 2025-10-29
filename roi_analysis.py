@@ -124,7 +124,8 @@ def get_fan_ellipse_mask(roi, cx, cy, contour):
 
 def compute_fitted_fan_shape(contour, cx, cy, angle):
     """
-    부채꼴 contour로부터 fitted fan shape 계산
+    부채꼴 contour를 smoothing하여 fitted shape 계산
+    원본 contour를 부드럽게 만듦
     
     Args:
         contour: contour 데이터
@@ -140,43 +141,44 @@ def compute_fitted_fan_shape(contour, cx, cy, angle):
     # Contour를 numpy 배열로 변환
     cnt_points = contour.reshape(-1, 2).astype(float)
     
-    # 중심점을 원점으로 이동
-    points_centered = cnt_points - np.array([cx, cy])
+    # 원본 contour를 그대로 사용
+    fitted_points = cnt_points
     
-    # 각 점의 각도와 거리 계산
-    angles = np.arctan2(points_centered[:, 1], points_centered[:, 0]) * 180 / np.pi
-    distances = np.sqrt(points_centered[:, 0]**2 + points_centered[:, 1]**2)
-    
-    # Convex hull 계산
-    hull = cv2.convexHull(cnt_points.astype(np.int32))
-    hull_points = hull.reshape(-1, 2)
-    
-    # 각도 범위와 최대 거리 계산
-    hull_centered = hull_points.astype(float) - np.array([cx, cy])
-    hull_angles = np.arctan2(hull_centered[:, 1], hull_centered[:, 0]) * 180 / np.pi
-    hull_distances = np.sqrt(hull_centered[:, 0]**2 + hull_centered[:, 1]**2)
-    
-    # 각도 정렬
-    sorted_indices = np.argsort(hull_angles)
-    hull_angles_sorted = hull_angles[sorted_indices]
-    hull_distances_sorted = hull_distances[sorted_indices]
-    
-    # Smooth한 부채꼴 생성: 각도별로 최대 거리 사용
-    angles_range = np.linspace(hull_angles.min(), hull_angles.max(), 50)
-    fitted_points = []
-    
-    for ang in angles_range:
-        # 해당 각도에 가장 가까운 거리를 찾기
-        closest_idx = np.argmin(np.abs(hull_angles_sorted - ang))
-        dist = hull_distances_sorted[closest_idx]
+    # Gaussian smoothing 적용 (부드러운 곡선을 위해)
+    if len(fitted_points) > 4:
         
-        # 좌표로 변환
-        ang_rad = ang * np.pi / 180
-        x = cx + dist * np.cos(ang_rad)
-        y = cy + dist * np.sin(ang_rad)
-        fitted_points.append([x, y])
+        # 이웃 점들의 평균 사용 (moving average)
+        n = len(fitted_points)
+        smoothed = np.zeros_like(fitted_points)
+        
+        # Gaussian-like smoothing (양쪽 2개씩 확인)
+        for i in range(n):
+            weights = [0.15, 0.35, 0.50, 0.35, 0.15]
+            weighted_sum = np.zeros(2)
+            
+            for j, weight in enumerate(weights):
+                idx = (i + j - 2) % n  # -2 to +2
+                weighted_sum += fitted_points[idx] * weight
+            
+            smoothed[i] = weighted_sum
+        
+        fitted_points = smoothed
     
-    return np.array(fitted_points)
+    # 점 수를 늘려서 더 부드러운 곡선 생성
+    if len(fitted_points) < 80:
+        new_points = []
+        for i in range(len(fitted_points)):
+            next_i = (i + 1) % len(fitted_points)
+            # 각 구간을 4개 점으로 분할
+            for j in range(4):
+                t = j / 4.0
+                x = fitted_points[i][0] * (1 - t) + fitted_points[next_i][0] * t
+                y = fitted_points[i][1] * (1 - t) + fitted_points[next_i][1] * t
+                new_points.append([x, y])
+        
+        fitted_points = np.array(new_points)
+    
+    return fitted_points
 
 
 def detect_beam_shape(mask_contour) -> str:
