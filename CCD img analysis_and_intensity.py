@@ -98,10 +98,13 @@ def ask_files_selection():
     root.withdraw()
     root.attributes('-topmost', True)
     
+    # 현재 실행 폴더를 기본 경로로 사용
+    initial_dir = os.getcwd()
+    
     files = filedialog.askopenfilenames(
         title="SPE 파일 선택",
         filetypes=[("SPE files", "*.spe"), ("All files", "*.*")],
-        initialdir=r"C:\Users\user\Desktop\회사 관련 서류\신동엽-LEUS\CCD IMG"
+        initialdir=initial_dir
     )
     
     root.destroy()
