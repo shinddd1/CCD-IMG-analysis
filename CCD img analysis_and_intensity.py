@@ -1202,12 +1202,16 @@ if INTENSITY_NORM == 'global':
         print("Warning: Could not gather data for global normalization. Defaulting to individual normalization or manual adjustment.")
         INTENSITY_NORM = 'individual' # Fallback
 
-fig_img, axes_img_list = plt.subplots(rows, cols, figsize=(7 * cols, 7 * rows)) # Slightly taller for titles
-fig_prof, axes_prof_list = plt.subplots(rows, cols, figsize=(7 * cols, 5 * rows))
+fig_img, axes_img_list = plt.subplots(rows, cols, figsize=(7 * cols, 6 * rows)) # 더 작은 높이로 조정
+fig_prof, axes_prof_list = plt.subplots(rows, cols, figsize=(7 * cols, 4 * rows))
 
 # Flatten axes arrays for easier iteration, handle single plot case
 axes_img_flat = np.array(axes_img_list).flatten()
 axes_prof_flat = np.array(axes_prof_list).flatten()
+
+# 여백 최소화
+fig_img.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
+fig_prof.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.08, wspace=0.15, hspace=0.3)
 
 fig_img.canvas.mpl_connect('button_press_event', on_click)
 fig_img.canvas.mpl_connect('key_press_event', on_key)
