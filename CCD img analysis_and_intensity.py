@@ -713,8 +713,65 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                     contours_e2, _ = cv2.findContours(mask_peak_e2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                     if contours_e2:
                         cnt = max(contours_e2, key=cv2.contourArea)
-                        if len(cnt) >= 5:
-                            # Fitting 타원을 실선으로 그리기 (roi_large 기준)
+                        
+                        # BEAM_SHAPE_MODE에 따라 타원 또는 부채꼴 피팅
+                        if BEAM_SHAPE_MODE == 'fan':
+                            # 부채꼴 피팅
+                            try:
+                                fan_result = fit_fan_shape_roi(roi_large, th_e2, peak_y_roi_large, peak_x_roi_large)
+                                if fan_result:
+                                    cnt_fan, mask_fan, (cx_large, cy_large), angle = fan_result
+                                    # roi_large 좌표를 roi 좌표계로 변환
+                                    cx = cx_large - crop_offset_x
+                                    cy = cy_large - crop_offset_y
+                                    
+                                    # Contour를 roi 좌표계로 변환
+                                    cnt_roi = cnt_fan.reshape(-1, 2).copy()
+                                    cnt_roi[:, 0] -= crop_offset_x
+                                    cnt_roi[:, 1] -= crop_offset_y
+                                    ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
+                                              color='red', linewidth=1.5, linestyle='--', 
+                                              label='1/e² RAW (Fan)', alpha=0.7)
+                                    
+                                    # 마스크 생성 및 CCD Counts 계산
+                                    yy, xx = np.indices(roi.shape)
+                                    mask_fan_roi = np.zeros(roi.shape, dtype=bool)
+                                    cnt_points_roi = cnt_roi.astype(int)
+                                    cv2.fillPoly(mask_fan_roi, [cnt_points_roi], True)
+                                    
+                                    if np.any(mask_fan_roi):
+                                        ccd_counts = float(np.sum(roi[mask_fan_roi]))
+                                        ellipse_data["CCD Counts"] = ccd_counts
+                                        
+                                        # EUV Power Calculation
+                                        numerator = (
+                                            ccd_counts
+                                            * CCD_Gain_Para
+                                            * (Laser_Rep_Rate / Num_of_Pulses)
+                                            * E_photon_eV
+                                            * e_charge_C
+                                            * 1000
+                                            / (E_photon_eV / 3.62)
+                                        )
+                                        denominator = (
+                                            QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
+                                        )
+                                        if denominator > 0:
+                                            euv_power_mW = numerator / denominator
+                                        else:
+                                            euv_power_mW = 0
+                                        ellipse_data["Collected Power"] = euv_power_mW
+                                    
+                                    # 부채꼴 표시
+                                    ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
+                                              color='red', linewidth=2, 
+                                              label='1/e² Fan Shape')
+                            except:
+                                pass
+                        
+                        if len(cnt) >= 5 and BEAM_SHAPE_MODE == 'ellipse':
+                            # Continue with ellipse fitting only if in ellipse mode
+                            # 타원 피팅
                             ellipse = cv2.fitEllipse(cnt)
                             (cx_large, cy_large), (maj, minr), angle = ellipse
                             

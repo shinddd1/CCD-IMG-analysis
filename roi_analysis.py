@@ -61,7 +61,7 @@ def fit_fan_shape_roi(image, th_e2, peak_y, peak_x):
         peak_y, peak_x: 피크 위치
     
     Returns:
-        중심, 마스크, 각도 정보
+        contour, mask, (cx, cy), angle
     """
     mask_e2 = (image > th_e2).astype(np.uint8)
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_e2, connectivity=8)
@@ -89,18 +89,37 @@ def fit_fan_shape_roi(image, th_e2, peak_y, peak_x):
             else:
                 cx, cy = int(peak_x), int(peak_y)
             
-            # 최대 거리 계산 (반지름 역할)
-            max_dist = 0
-            for point in cnt:
-                dist = np.sqrt((point[0][0] - cx)**2 + (point[0][1] - cy)**2)
-                max_dist = max(max_dist, dist)
-            
             # 각도 계산 (피크와 중심을 기준)
             angle = np.arctan2(peak_y - cy, peak_x - cx) * 180 / np.pi
             
-            return (cx, cy), max_dist, angle, mask_peak
+            return cnt, mask_peak, (cx, cy), angle
     
     return None
+
+
+def get_fan_ellipse_mask(roi, cx, cy, contour):
+    """
+    부채꼴 contour를 마스크로 변환
+    
+    Args:
+        roi: ROI 이미지
+        cx, cy: 중심점
+        contour: contour 데이터
+    
+    Returns:
+        마스크 (boolean array)
+    """
+    if contour is None:
+        return None
+    
+    # Contour를 ROI의 픽셀 좌표로 변환
+    mask = np.zeros(roi.shape, dtype=bool)
+    cnt_points = contour.reshape(-1, 2).astype(int)
+    
+    # Contour 내부를 True로 설정
+    cv2.fillPoly(mask, [cnt_points], True)
+    
+    return mask
 
 
 def detect_beam_shape(mask_contour) -> str:
