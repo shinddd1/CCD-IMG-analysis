@@ -868,16 +868,20 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                         ellipse_data["Collected Power"] = euv_power_mW
                                     
                                     # Fitted Fan Shape 계산 및 표시
-                                    fitted_shape = compute_fitted_fan_shape(cnt_fan, cx_large, cy_large, angle)
-                                    if fitted_shape is not None:
-                                        fitted_shape_roi = fitted_shape.copy()
-                                        fitted_shape_roi[:, 0] -= crop_offset_x
-                                        fitted_shape_roi[:, 1] -= crop_offset_y
-                                        ax_img.plot(fitted_shape_roi[:, 0], fitted_shape_roi[:, 1], 
-                                                  color='cyan', linewidth=2, 
-                                                  label='1/e² Fitting', alpha=0.8)
-                            except:
-                                pass
+                                    try:
+                                        fitted_shape = compute_fitted_fan_shape(cnt_fan, cx_large, cy_large, angle)
+                                        if fitted_shape is not None and len(fitted_shape) > 0:
+                                            fitted_shape_roi = fitted_shape.copy()
+                                            fitted_shape_roi[:, 0] -= crop_offset_x
+                                            fitted_shape_roi[:, 1] -= crop_offset_y
+                                            ax_img.plot(fitted_shape_roi[:, 0], fitted_shape_roi[:, 1], 
+                                                      color='cyan', linewidth=2, 
+                                                      label='1/e² Fitting', alpha=0.8)
+                                            print(f"[Fitted Fan Shape] Points: {len(fitted_shape)}")
+                                        else:
+                                            print(f"[Warning] fitted_shape is None or empty")
+                                    except Exception as e:
+                                        print(f"[Error computing fitted fan shape]: {e}")
                         
                         if len(cnt) >= 5 and BEAM_SHAPE_MODE == 'ellipse':
                             # Continue with ellipse fitting only if in ellipse mode
