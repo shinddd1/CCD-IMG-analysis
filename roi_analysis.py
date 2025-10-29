@@ -122,6 +122,63 @@ def get_fan_ellipse_mask(roi, cx, cy, contour):
     return mask
 
 
+def compute_fitted_fan_shape(contour, cx, cy, angle):
+    """
+    부채꼴 contour로부터 fitted fan shape 계산
+    
+    Args:
+        contour: contour 데이터
+        cx, cy: 중심점
+        angle: 중심 각도 (도)
+    
+    Returns:
+        fitted_points: fitted fan shape의 좌표 배열 (Nx2)
+    """
+    if contour is None or len(contour) < 3:
+        return None
+    
+    # Contour를 numpy 배열로 변환
+    cnt_points = contour.reshape(-1, 2).astype(float)
+    
+    # 중심점을 원점으로 이동
+    points_centered = cnt_points - np.array([cx, cy])
+    
+    # 각 점의 각도와 거리 계산
+    angles = np.arctan2(points_centered[:, 1], points_centered[:, 0]) * 180 / np.pi
+    distances = np.sqrt(points_centered[:, 0]**2 + points_centered[:, 1]**2)
+    
+    # Convex hull 계산
+    hull = cv2.convexHull(cnt_points.astype(np.int32))
+    hull_points = hull.reshape(-1, 2)
+    
+    # 각도 범위와 최대 거리 계산
+    hull_centered = hull_points.astype(float) - np.array([cx, cy])
+    hull_angles = np.arctan2(hull_centered[:, 1], hull_centered[:, 0]) * 180 / np.pi
+    hull_distances = np.sqrt(hull_centered[:, 0]**2 + hull_centered[:, 1]**2)
+    
+    # 각도 정렬
+    sorted_indices = np.argsort(hull_angles)
+    hull_angles_sorted = hull_angles[sorted_indices]
+    hull_distances_sorted = hull_distances[sorted_indices]
+    
+    # Smooth한 부채꼴 생성: 각도별로 최대 거리 사용
+    angles_range = np.linspace(hull_angles.min(), hull_angles.max(), 50)
+    fitted_points = []
+    
+    for ang in angles_range:
+        # 해당 각도에 가장 가까운 거리를 찾기
+        closest_idx = np.argmin(np.abs(hull_angles_sorted - ang))
+        dist = hull_distances_sorted[closest_idx]
+        
+        # 좌표로 변환
+        ang_rad = ang * np.pi / 180
+        x = cx + dist * np.cos(ang_rad)
+        y = cy + dist * np.sin(ang_rad)
+        fitted_points.append([x, y])
+    
+    return np.array(fitted_points)
+
+
 def detect_beam_shape(mask_contour) -> str:
     """
     빔의 모양을 자동 감지

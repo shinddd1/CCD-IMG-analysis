@@ -23,7 +23,8 @@ try:
         fit_ellipse_roi,
         fit_fan_shape_roi,
         calculate_roi_complex,
-        calculate_integrated_intensity
+        calculate_integrated_intensity,
+        compute_fitted_fan_shape
     )
 except ImportError:
     print("Warning: roi_analysis module not found. Using default ellipse fitting only.")
@@ -866,10 +867,15 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                             euv_power_mW = 0
                                         ellipse_data["Collected Power"] = euv_power_mW
                                     
-                                    # 부채꼴 표시
-                                    ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
-                                              color='red', linewidth=2, 
-                                              label='1/e² Fan Shape')
+                                    # Fitted Fan Shape 계산 및 표시
+                                    fitted_shape = compute_fitted_fan_shape(cnt_fan, cx_large, cy_large, angle)
+                                    if fitted_shape is not None:
+                                        fitted_shape_roi = fitted_shape.copy()
+                                        fitted_shape_roi[:, 0] -= crop_offset_x
+                                        fitted_shape_roi[:, 1] -= crop_offset_y
+                                        ax_img.plot(fitted_shape_roi[:, 0], fitted_shape_roi[:, 1], 
+                                                  color='cyan', linewidth=2, 
+                                                  label='1/e² Fitting', alpha=0.8)
                             except:
                                 pass
                         
