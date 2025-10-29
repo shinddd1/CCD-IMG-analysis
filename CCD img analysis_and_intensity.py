@@ -1131,7 +1131,7 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
         
         # 범례 순서 지정: Major/Minor Axis 먼저, 그 다음 1/e², FWHM
         handles, labels = ax_img.get_legend_handles_labels()
-        desired_order = ['Major Axis', 'Minor Axis', '1/e² RAW', '1/e² Ellipse', 'FWHM RAW', 'FWHM Ellipse', 'Peak Intensity']
+        desired_order = ['Major Axis', 'Minor Axis', '1/e² RAW', '1/e² RAW (Fan)', '1/e² Ellipse', '1/e² Fitting', '1/e² Fitting (Fan)', 'FWHM RAW', 'FWHM Ellipse', 'Peak Intensity']
         # 원하는 순서대로 정렬
         ordered_handles = []
         ordered_labels = []
