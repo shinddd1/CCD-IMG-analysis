@@ -151,14 +151,30 @@ def save_frame_override(plot_index, frame_index, margin=50):
         json.dump(overrides, f, indent=4)
 
 def update_frame_display(idx, new_frame):
-    """프레임 변경 시 프로그램 재시작"""
+    """프레임 변경 시 즉시 업데이트"""
+    global file_list, file_list_full_paths, directory, axes_img_flat, axes_prof_flat
+    
     # frame_override.json에 저장
     save_frame_override(idx, new_frame)
     
     print(f"[프레임 변경] Plot {idx+1} -> Frame {new_frame+1}")
     
-    # 프로그램 재시작
-    restart_program()
+    # 해당 플롯만 다시 처리
+    if idx < len(file_list) and idx < len(axes_img_flat):
+        # Use full path from selected files
+        full_path = file_list_full_paths[idx] if idx < len(file_list_full_paths) else os.path.join(directory, file_list[idx])
+        ax_img_current = axes_img_flat[idx]
+        ax_prof_current = axes_prof_flat[idx]
+        
+        try:
+            metadata = load_spe_metadata(full_path)
+            num_frames_in_file = metadata[2]
+            
+            if num_frames_in_file > new_frame:
+                process_and_display_frame(full_path, new_frame, num_frames_in_file, metadata, file_list[idx], ax_img_current, ax_prof_current, idx)
+                ax_img_current.figure.canvas.draw_idle()
+        except Exception as e:
+            print(f"Error updating frame: {e}")
     
 # === Event Handlers ===
 def on_click(event):
@@ -753,16 +769,6 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
                                               color='red', linewidth=1.5, linestyle='--', 
                                               label='1/e² RAW (Fan)', alpha=0.7)
-                                    
-                                    # 부채꼴 contour에 대한 fitting ellipse 계산 (Best Frame 선택을 위해)
-                                    if len(cnt_fan) >= 5:
-                                        ellipse_fan = cv2.fitEllipse(cnt_fan)
-                                        (cx_fit, cy_fit), (maj_fit, minr_fit), angle_fit = ellipse_fan
-                                        # ellipse_data에 Major/Minor 저장 (Best Frame 선택용)
-                                        ellipse_data["Major Length (px)"] = maj_fit
-                                        ellipse_data["Minor Length (px)"] = minr_fit
-                                        ellipse_data["Major Length (μm)"] = maj_fit * PIXEL_SIZE
-                                        ellipse_data["Minor Length (μm)"] = minr_fit * PIXEL_SIZE
                                     
                                     # 마스크 생성 및 CCD Counts 계산
                                     yy, xx = np.indices(roi.shape)
