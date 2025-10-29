@@ -124,8 +124,8 @@ def get_fan_ellipse_mask(roi, cx, cy, contour):
 
 def compute_fitted_fan_shape(contour, cx, cy, angle):
     """
-    부채꼴 contour를 smoothing하여 fitted shape 계산
-    원본 contour를 부드럽게 만듦
+    부채꼴 contour를 추가 점으로 보간하여 더 부드러운 fitted shape 생성
+    원본 좌표를 유지하면서 점만 추가
     
     Args:
         contour: contour 데이터
@@ -141,42 +141,29 @@ def compute_fitted_fan_shape(contour, cx, cy, angle):
     # Contour를 numpy 배열로 변환
     cnt_points = contour.reshape(-1, 2).astype(float)
     
-    # 원본 contour를 그대로 사용
-    fitted_points = cnt_points
+    # 원본 contour를 그대로 사용하되, 점 수만 늘려서 부드럽게 만들기
+    # 좌표는 변경하지 않고 점만 interpolation으로 추가
     
-    # Gaussian smoothing 적용 (부드러운 곡선을 위해)
-    if len(fitted_points) > 4:
-        
-        # 이웃 점들의 평균 사용 (moving average)
-        n = len(fitted_points)
-        smoothed = np.zeros_like(fitted_points)
-        
-        # Gaussian-like smoothing (양쪽 2개씩 확인)
-        for i in range(n):
-            weights = [0.15, 0.35, 0.50, 0.35, 0.15]
-            weighted_sum = np.zeros(2)
-            
-            for j, weight in enumerate(weights):
-                idx = (i + j - 2) % n  # -2 to +2
-                weighted_sum += fitted_points[idx] * weight
-            
-            smoothed[i] = weighted_sum
-        
-        fitted_points = smoothed
+    # 점이 이미 충분히 많으면 그대로 사용
+    if len(cnt_points) >= 60:
+        return cnt_points
     
     # 점 수를 늘려서 더 부드러운 곡선 생성
-    if len(fitted_points) < 80:
-        new_points = []
-        for i in range(len(fitted_points)):
-            next_i = (i + 1) % len(fitted_points)
-            # 각 구간을 4개 점으로 분할
-            for j in range(4):
-                t = j / 4.0
-                x = fitted_points[i][0] * (1 - t) + fitted_points[next_i][0] * t
-                y = fitted_points[i][1] * (1 - t) + fitted_points[next_i][1] * t
-                new_points.append([x, y])
+    # 원본 점들을 포함하고 그 사이에 interpolation된 점 추가
+    new_points = []
+    for i in range(len(cnt_points)):
+        # 원본 점 추가
+        new_points.append(cnt_points[i])
         
-        fitted_points = np.array(new_points)
+        # 다음 점과의 사이에 2개의 interpolation 점 추가
+        next_i = (i + 1) % len(cnt_points)
+        for j in range(1, 3):  # 1/3, 2/3 지점
+            t = j / 3.0
+            x = cnt_points[i][0] * (1 - t) + cnt_points[next_i][0] * t
+            y = cnt_points[i][1] * (1 - t) + cnt_points[next_i][1] * t
+            new_points.append([x, y])
+    
+    fitted_points = np.array(new_points)
     
     return fitted_points
 
