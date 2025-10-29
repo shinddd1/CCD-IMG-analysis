@@ -872,19 +872,26 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     
                                     # Fitted Fan Shape 계산 및 표시
                                     try:
+                                        print(f"[DEBUG] Computing fitted fan shape...")
+                                        print(f"[DEBUG] cnt_fan shape: {cnt_fan.shape}, cx_large: {cx_large}, cy_large: {cy_large}")
                                         fitted_shape = compute_fitted_fan_shape(cnt_fan, cx_large, cy_large, angle)
+                                        print(f"[DEBUG] fitted_shape result: {fitted_shape}")
                                         if fitted_shape is not None and len(fitted_shape) > 0:
                                             fitted_shape_roi = fitted_shape.copy()
+                                            print(f"[DEBUG] Before transform: x range: {fitted_shape_roi[:, 0].min():.2f} - {fitted_shape_roi[:, 0].max():.2f}, y range: {fitted_shape_roi[:, 1].min():.2f} - {fitted_shape_roi[:, 1].max():.2f}")
                                             fitted_shape_roi[:, 0] -= crop_offset_x
                                             fitted_shape_roi[:, 1] -= crop_offset_y
+                                            print(f"[DEBUG] After transform: x range: {fitted_shape_roi[:, 0].min():.2f} - {fitted_shape_roi[:, 0].max():.2f}, y range: {fitted_shape_roi[:, 1].min():.2f} - {fitted_shape_roi[:, 1].max():.2f}")
                                             ax_img.plot(fitted_shape_roi[:, 0], fitted_shape_roi[:, 1], 
                                                       color='cyan', linewidth=2, 
-                                                      label='1/e² Fitting', alpha=0.8)
-                                            print(f"[Fitted Fan Shape] Points: {len(fitted_shape)}")
+                                                      label='1/e² Fitting (Fan)', alpha=0.8)
+                                            print(f"[Fitted Fan Shape] Points: {len(fitted_shape)}, plotted successfully")
                                         else:
                                             print(f"[Warning] fitted_shape is None or empty")
                                     except Exception as e:
+                                        import traceback
                                         print(f"[Error computing fitted fan shape]: {e}")
+                                        traceback.print_exc()
                             except Exception as e:
                                 print(f"[Error in fan fitting]: {e}")
                         
