@@ -835,11 +835,15 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     
                                     # Contour를 roi 좌표계로 변환
                                     cnt_roi = cnt_fan.reshape(-1, 2).copy()
+                                    print(f"[DEBUG] Before transform cnt_roi: x range: {cnt_roi[:, 0].min():.2f} - {cnt_roi[:, 0].max():.2f}, y range: {cnt_roi[:, 1].min():.2f} - {cnt_roi[:, 1].max():.2f}")
                                     cnt_roi[:, 0] -= crop_offset_x
                                     cnt_roi[:, 1] -= crop_offset_y
+                                    print(f"[DEBUG] After transform cnt_roi: x range: {cnt_roi[:, 0].min():.2f} - {cnt_roi[:, 0].max():.2f}, y range: {cnt_roi[:, 1].min():.2f} - {cnt_roi[:, 1].max():.2f}")
+                                    print(f"[DEBUG] ROI shape: {roi.shape}")
                                     ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
                                               color='red', linewidth=1.5, linestyle='--', 
                                               label='1/e² RAW (Fan)', alpha=0.7)
+                                    print(f"[DEBUG] Plotted 1/e² RAW (Fan) with {len(cnt_roi)} points")
                                     
                                     # 마스크 생성 및 CCD Counts 계산
                                     yy, xx = np.indices(roi.shape)
