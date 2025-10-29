@@ -843,9 +843,10 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     
                                     # 마스크 생성 및 CCD Counts 계산
                                     yy, xx = np.indices(roi.shape)
-                                    mask_fan_roi = np.zeros(roi.shape, dtype=bool)
+                                    mask_fan_roi = np.zeros(roi.shape, dtype=np.uint8)
                                     cnt_points_roi = cnt_roi.astype(int)
-                                    cv2.fillPoly(mask_fan_roi, [cnt_points_roi], True)
+                                    cv2.fillPoly(mask_fan_roi, [cnt_points_roi], 1)
+                                    mask_fan_roi = mask_fan_roi.astype(bool)
                                     
                                     if np.any(mask_fan_roi):
                                         ccd_counts = float(np.sum(roi[mask_fan_roi]))
