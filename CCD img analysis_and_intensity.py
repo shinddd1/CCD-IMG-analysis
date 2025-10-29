@@ -754,6 +754,16 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                               color='red', linewidth=1.5, linestyle='--', 
                                               label='1/e² RAW (Fan)', alpha=0.7)
                                     
+                                    # 부채꼴 contour에 대한 fitting ellipse 계산 (Best Frame 선택을 위해)
+                                    if len(cnt_fan) >= 5:
+                                        ellipse_fan = cv2.fitEllipse(cnt_fan)
+                                        (cx_fit, cy_fit), (maj_fit, minr_fit), angle_fit = ellipse_fan
+                                        # ellipse_data에 Major/Minor 저장 (Best Frame 선택용)
+                                        ellipse_data["Major Length (px)"] = maj_fit
+                                        ellipse_data["Minor Length (px)"] = minr_fit
+                                        ellipse_data["Major Length (μm)"] = maj_fit * PIXEL_SIZE
+                                        ellipse_data["Minor Length (μm)"] = minr_fit * PIXEL_SIZE
+                                    
                                     # 마스크 생성 및 CCD Counts 계산
                                     yy, xx = np.indices(roi.shape)
                                     mask_fan_roi = np.zeros(roi.shape, dtype=bool)
