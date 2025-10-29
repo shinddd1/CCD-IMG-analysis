@@ -840,9 +840,11 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     cnt_roi[:, 1] -= crop_offset_y
                                     print(f"[DEBUG] After transform cnt_roi: x range: {cnt_roi[:, 0].min():.2f} - {cnt_roi[:, 0].max():.2f}, y range: {cnt_roi[:, 1].min():.2f} - {cnt_roi[:, 1].max():.2f}")
                                     print(f"[DEBUG] ROI shape: {roi.shape}")
-                                    ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
-                                              color='red', linewidth=1.5, linestyle='--', 
-                                              label='1/e² RAW (Fan)', alpha=0.7)
+                                    # Close the contour by adding the first point at the end
+                                    cnt_roi_closed = np.vstack([cnt_roi, cnt_roi[0:1]])
+                                    ax_img.plot(cnt_roi_closed[:, 0], cnt_roi_closed[:, 1], 
+                                              color='red', linewidth=2, linestyle='-', 
+                                              label='1/e² RAW (Fan)', alpha=0.9)
                                     print(f"[DEBUG] Plotted 1/e² RAW (Fan) with {len(cnt_roi)} points")
                                     
                                     # 마스크 생성 및 CCD Counts 계산
