@@ -175,7 +175,8 @@ def update_frame_display(idx, new_frame):
             num_frames_in_file = metadata[2]
             
             if num_frames_in_file > new_frame:
-                process_and_display_frame(full_path, new_frame, num_frames_in_file, metadata, file_list[idx], ax_img_current, ax_prof_current, idx)
+                # 파라미터 순서 수정: ax_img, ax_prof가 첫 번째와 두 번째
+                process_and_display_frame(ax_img_current, ax_prof_current, full_path, new_frame, num_frames_in_file, metadata, file_list[idx], idx)
                 ax_img_current.figure.canvas.draw_idle()
         except Exception as e:
             print(f"Error updating frame: {e}")

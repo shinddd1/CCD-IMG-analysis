@@ -124,8 +124,8 @@ def get_fan_ellipse_mask(roi, cx, cy, contour):
 
 def compute_fitted_fan_shape(contour, cx, cy, angle):
     """
-    부채꼴 contour를 추가 점으로 보간하여 더 부드러운 fitted shape 생성
-    원본 좌표를 유지하면서 점만 추가
+    자유형 contour를 smoothing하여 fitted shape 생성
+    원본 contour를 따라가되 부드럽게 만듦
     
     Args:
         contour: contour 데이터
@@ -141,29 +141,71 @@ def compute_fitted_fan_shape(contour, cx, cy, angle):
     # Contour를 numpy 배열로 변환
     cnt_points = contour.reshape(-1, 2).astype(float)
     
-    # 원본 contour를 그대로 사용하되, 점 수만 늘려서 부드럽게 만들기
-    # 좌표는 변경하지 않고 점만 interpolation으로 추가
+    # 자유형 contour fitting: 원본 형태를 유지하면서 smoothing
+    # 1단계: Gaussian smoothing으로 노이즈 제거
+    smoothed = cnt_points.copy()
     
-    # 점이 이미 충분히 많으면 그대로 사용
-    if len(cnt_points) >= 60:
-        return cnt_points
-    
-    # 점 수를 늘려서 더 부드러운 곡선 생성
-    # 원본 점들을 포함하고 그 사이에 interpolation된 점 추가
-    new_points = []
-    for i in range(len(cnt_points)):
-        # 원본 점 추가
-        new_points.append(cnt_points[i])
+    if len(cnt_points) > 5:
+        # 이웃 점들과의 가중 평균으로 smoothing
+        n = len(cnt_points)
+        temp = np.zeros_like(cnt_points)
         
-        # 다음 점과의 사이에 2개의 interpolation 점 추가
-        next_i = (i + 1) % len(cnt_points)
-        for j in range(1, 3):  # 1/3, 2/3 지점
-            t = j / 3.0
-            x = cnt_points[i][0] * (1 - t) + cnt_points[next_i][0] * t
-            y = cnt_points[i][1] * (1 - t) + cnt_points[next_i][1] * t
-            new_points.append([x, y])
+        for i in range(n):
+            # 5-point Gaussian kernel: [0.06, 0.24, 0.40, 0.24, 0.06]
+            weights = [0.06, 0.24, 0.40, 0.24, 0.06]
+            weighted_sum = np.zeros(2)
+            
+            for j, weight in enumerate(weights):
+                idx = (i + j - 2) % n  # -2, -1, 0, 1, 2
+                weighted_sum += cnt_points[idx] * weight
+            
+            temp[i] = weighted_sum
+        
+        smoothed = temp
     
-    fitted_points = np.array(new_points)
+    # 2단계: 점 수를 늘려서 더 부드러운 곡선 생성
+    # Cubic interpolation으로 부드러운 곡선 생성
+    if len(smoothed) < 100:
+        new_points = []
+        for i in range(len(smoothed)):
+            # 원본 점 추가
+            new_points.append(smoothed[i])
+            
+            # 다음 점과의 사이에 interpolation 점 추가
+            next_i = (i + 1) % len(smoothed)
+            
+            # 3개 점으로 분할
+            for j in range(1, 3):
+                t = j / 3.0
+                # Cubic Hermite spline을 위한 tangent 계산
+                prev_i = (i - 1) % len(smoothed)
+                next_next_i = (i + 2) % len(smoothed)
+                
+                # Catmull-Rom spline
+                p0 = smoothed[prev_i]
+                p1 = smoothed[i]
+                p2 = smoothed[next_i]
+                p3 = smoothed[next_next_i]
+                
+                # Catmull-Rom 보간
+                t2 = t * t
+                t3 = t2 * t
+                
+                x = 0.5 * ((2 * p1[0]) +
+                          (-p0[0] + p2[0]) * t +
+                          (2*p0[0] - 5*p1[0] + 4*p2[0] - p3[0]) * t2 +
+                          (-p0[0] + 3*p1[0] - 3*p2[0] + p3[0]) * t3)
+                
+                y = 0.5 * ((2 * p1[1]) +
+                          (-p0[1] + p2[1]) * t +
+                          (2*p0[1] - 5*p1[1] + 4*p2[1] - p3[1]) * t2 +
+                          (-p0[1] + 3*p1[1] - 3*p2[1] + p3[1]) * t3)
+                
+                new_points.append([x, y])
+        
+        fitted_points = np.array(new_points)
+    else:
+        fitted_points = smoothed
     
     return fitted_points
 
