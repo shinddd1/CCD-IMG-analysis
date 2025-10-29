@@ -10,7 +10,7 @@ matplotlib.use('TkAgg')
 from matplotlib.patches import Ellipse
 from scipy.ndimage import map_coordinates # Imported directly for line profile
 import tkinter as tk
-from tkinter import simpledialog, messagebox
+from tkinter import simpledialog, messagebox, filedialog
 import json
 import tempfile
 import time
@@ -89,6 +89,27 @@ def restart_program():
     except Exception as e:
         print(f"재시작 오류: {e}")
         print("수동으로 재시작해주세요: python " + script_path)
+
+# === File Selection Function ===
+def ask_files_selection():
+    """Select SPE files to analyze"""
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    
+    files = filedialog.askopenfilenames(
+        title="SPE 파일 선택",
+        filetypes=[("SPE files", "*.spe"), ("All files", "*.*")],
+        initialdir=r"C:\Users\user\Desktop\회사 관련 서류\신동엽-LEUS\CCD IMG"
+    )
+    
+    root.destroy()
+    
+    if not files:
+        print("No files selected. Exiting.")
+        sys.exit(0)
+    
+    return list(files)
 
 # === Beam Shape Selection Function ===
 def ask_beam_shape():
@@ -1047,14 +1068,22 @@ MANUAL_XLIM = [0, 100]
 MANUAL_YLIM = [0, 100]
 INTENSITY_NORM = 'individual' # 'individual', 'global', or 'manual'
 
-directory = r"C:\Users\user\Desktop\회사 관련 서류\신동엽-LEUS\CCD IMG" # MODIFY THIS PATH
-if not os.path.isdir(directory):
-    print(f"Error: Directory not found: {directory}")
-    sys.exit()
-file_list_orig = [f for f in os.listdir(directory) if f.lower().endswith(".spe")]
+# === Ask user to select files ===
+print("="*50)
+print("파일 선택 다이얼로그를 여는 중...")
+print("="*50)
 
-if not file_list_orig:
-    print(f"No .spe files found in {directory}")
+file_list_full_paths = ask_files_selection()
+print(f"선택된 파일: {len(file_list_full_paths)}개")
+for i, fpath in enumerate(file_list_full_paths):
+    print(f"  [{i+1}] {os.path.basename(fpath)}")
+
+# Extract filenames and directory for compatibility
+file_list_orig = [os.path.basename(f) for f in file_list_full_paths]
+if file_list_full_paths:
+    directory = os.path.dirname(file_list_full_paths[0])
+else:
+    print("No files selected")
     sys.exit()
 
 # Sort files numerically if they follow a pattern like 'file_1.spe', 'file_10.spe'
@@ -1073,7 +1102,8 @@ print("STAGE 1: 사전 분석 - 모든 프레임을 분석하여 최적 프레�
 print("="*50)
 all_frames_data = []
 for idx, fname in enumerate(file_list):
-    full_path = os.path.join(directory, fname)
+    # Use full path from selected files
+    full_path = file_list_full_paths[idx] if idx < len(file_list_full_paths) else os.path.join(directory, fname)
     print(f"  Analyzing [{idx+1}/{len(file_list)}] {fname}...")
     try:
         metadata = load_spe_metadata(full_path)
@@ -1127,9 +1157,10 @@ global_vmin, global_vmax = 0, 1
 if INTENSITY_NORM == 'global':
     all_intensities_for_global_norm = []
     print("Calculating global intensity normalization...")
-    for fname_norm in file_list:
+    for idx, fname_norm in enumerate(file_list):
         try:
-            path_norm = os.path.join(directory, fname_norm)
+            # Use full path from selected files
+            path_norm = file_list_full_paths[idx] if idx < len(file_list_full_paths) else os.path.join(directory, fname_norm)
             meta_norm = load_spe_metadata(path_norm)
             if meta_norm[2] > 0: # num_frames > 0
                 img_data_norm = load_spe_frame(path_norm, 0, meta_norm[0], meta_norm[1], meta_norm[3], meta_norm[4], meta_norm[5])
@@ -1173,7 +1204,8 @@ if __name__ == "__main__":
     print("frame_overrides loaded:", frame_overrides)
 
     for idx, fname in enumerate(file_list):
-        full_path = os.path.join(directory, fname)
+        # Use full path from selected files
+        full_path = file_list_full_paths[idx] if idx < len(file_list_full_paths) else os.path.join(directory, fname)
         ax_img_current = axes_img_flat[idx]
         ax_prof_current = axes_prof_flat[idx]
 
