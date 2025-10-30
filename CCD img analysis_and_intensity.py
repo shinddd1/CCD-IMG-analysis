@@ -29,22 +29,19 @@ try:
 except ImportError:
     print("Warning: roi_analysis module not found. Using default ellipse fitting only.")
 
+# Import EUV Power Calculator
+try:
+    from euv_power_calculator import create_calculator_window, update_calculator_ccd_counts
+except ImportError:
+    print("Warning: euv_power_calculator module not found. Calculator will not be available.")
+    create_calculator_window = None
+    update_calculator_ccd_counts = None
+
 # ── Global Variables & Setup ──
 PIXEL_SIZE = 0.5        # Initial μm/px conversion factor
 TICK_INTERVAL = 2.0    # Tick interval in μm
 BEAM_SHAPE_MODE = 'ellipse'  # 'ellipse' or 'fan' - beam fitting mode
 
-# === EUV Power Calculation Parameters (User Modify) ===
-CCD_Gain_Para = 1.0
-Laser_Rep_Rate = 150000  # Hz
-Num_of_Pulses = 150000
-E_photon_eV = 91.4  # eV
-QE = 0.84  # Quantum Efficiency
-Filter_Trans = 0.008   # Filter Transmittance
-ML_Reflect = 0.65  # Mirror Reflectance
-Optical_Coll_Eff = 1.0  # Optical Collection Efficiency
-Ar_Trans = 0.96649 # Ar Transmittance
-e_charge_C = 1.602e-19 # Elementary charge in Coulombs
 
 # To store axis-specific data, including references to colorbars for dynamic updates
 axis_data_map = {}
@@ -463,6 +460,7 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
         "Major Length (μm)": None, "Minor Length (μm)": None,
         "FWHM Major (px)": None, "FWHM Minor (px)": None,
         "FWHM Major (μm)": None, "FWHM Minor (μm)": None,
+        "Area (μm²)": None,
         "Collected Power": None,
         "CCD Power": None,
         "CCD Counts": None,
@@ -552,6 +550,9 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
                             ellipse_data["Minor Length (px)"] = minr
                             ellipse_data["Major Length (μm)"] = maj * PIXEL_SIZE
                             ellipse_data["Minor Length (μm)"] = minr * PIXEL_SIZE
+                            
+                            # Calculate ellipse area
+                            ellipse_data["Area (μm²)"] = np.pi * (maj / 2) * (minr / 2) * PIXEL_SIZE * PIXEL_SIZE
 
                             # --- 1/e² 타원 평균 intensity & Power 계산 ---
                             yy, xx = np.indices(roi.shape)
@@ -566,25 +567,15 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
                                 mean_intensity_e2 = np.mean(roi[mask_ellipse])
                                 ccd_counts = float(np.sum(roi[mask_ellipse]))
                                 ellipse_data["CCD Counts"] = ccd_counts
+                                
+                                # Update calculator with CCD Counts
+                                if update_calculator_ccd_counts:
+                                    print(f"[Main] Calling update_calculator_ccd_counts with value: {ccd_counts}")
+                                    update_calculator_ccd_counts(ccd_counts)
 
-                                # EUV Power Calculation
-                                numerator = (
-                                    ccd_counts
-                                    * CCD_Gain_Para
-                                    * (Laser_Rep_Rate / Num_of_Pulses)
-                                    * E_photon_eV
-                                    * e_charge_C
-                                    * 1000
-                                    / (E_photon_eV / 3.62)
-                                )
-                                denominator = (
-                                    QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
-                                )
-                                if denominator > 0:
-                                    euv_power_mW = numerator / denominator
-                                else:
-                                    euv_power_mW = 0
-                                ellipse_data["Collected Power"] = euv_power_mW
+                                # EUV Power will be calculated in the calculator
+                                # Set to None, user will input parameters and get result from calculator
+                                ellipse_data["Collected Power"] = None
 
                             # --- FWHM 타원 평균 intensity & Power 계산 ---
                             # FWHM 계산
@@ -665,6 +656,7 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
     "FWHM Minor (px)": None,
     "FWHM Major (μm)": None,
     "FWHM Minor (μm)": None,
+    "Area (μm²)": None,
     "Collected Power": None,  # 1/e² 타원 내부 총 광자 수 또는 에너지
     "CCD Power": None,  # FWHM 타원 내부 총 광자 수 또는 에너지
     "CCD Counts": None,
@@ -859,24 +851,16 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                         ccd_counts = float(np.sum(roi[mask_fan_roi]))
                                         ellipse_data["CCD Counts"] = ccd_counts
                                         
-                                        # EUV Power Calculation
-                                        numerator = (
-                                            ccd_counts
-                                            * CCD_Gain_Para
-                                            * (Laser_Rep_Rate / Num_of_Pulses)
-                                            * E_photon_eV
-                                            * e_charge_C
-                                            * 1000
-                                            / (E_photon_eV / 3.62)
-                                        )
-                                        denominator = (
-                                            QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
-                                        )
-                                        if denominator > 0:
-                                            euv_power_mW = numerator / denominator
-                                        else:
-                                            euv_power_mW = 0
-                                        ellipse_data["Collected Power"] = euv_power_mW
+                                        # Update calculator with CCD Counts
+                                        if update_calculator_ccd_counts:
+                                            update_calculator_ccd_counts(ccd_counts)
+                                        
+                                        # Calculate fan shape area
+                                        area_px = np.sum(mask_fan_roi)
+                                        ellipse_data["Area (μm²)"] = area_px * PIXEL_SIZE * PIXEL_SIZE
+                                        
+                                        # EUV Power will be calculated in the calculator
+                                        ellipse_data["Collected Power"] = None
                                     
                                     # Fitted Fan Shape 계산 및 표시
                                     try:
@@ -935,6 +919,9 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                             ellipse_data["Minor Length (px)"] = minr
                             ellipse_data["Major Length (μm)"] = maj * PIXEL_SIZE
                             ellipse_data["Minor Length (μm)"] = minr * PIXEL_SIZE
+                            
+                            # Calculate ellipse area
+                            ellipse_data["Area (μm²)"] = np.pi * (maj / 2) * (minr / 2) * PIXEL_SIZE * PIXEL_SIZE
 
                             # 1/e² 타원 면적과 강도 계산
                             yy, xx = np.indices(roi.shape)
@@ -947,25 +934,15 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                             if np.any(mask_ellipse):
                                 ccd_counts = float(np.sum(roi[mask_ellipse]))
                                 ellipse_data["CCD Counts"] = ccd_counts
+                                
+                                # Update calculator with CCD Counts
+                                if update_calculator_ccd_counts:
+                                    print(f"[Main] Calling update_calculator_ccd_counts with value: {ccd_counts}")
+                                    update_calculator_ccd_counts(ccd_counts)
 
-                                # EUV Power Calculation
-                                numerator = (
-                                    ccd_counts
-                                    * CCD_Gain_Para
-                                    * (Laser_Rep_Rate / Num_of_Pulses)
-                                    * E_photon_eV
-                                    * e_charge_C
-                                    * 1000
-                                    / (E_photon_eV / 3.62)
-                                )
-                                denominator = (
-                                    QE * Filter_Trans * ML_Reflect * Optical_Coll_Eff * Ar_Trans
-                                )
-                                if denominator > 0:
-                                    euv_power_mW = numerator / denominator
-                                else:
-                                    euv_power_mW = 0
-                                ellipse_data["Collected Power"] = euv_power_mW
+                                # EUV Power will be calculated in the calculator
+                                # Set to None, user will input parameters and get result from calculator
+                                ellipse_data["Collected Power"] = None
 
                             ax_img.add_patch(Ellipse((cx, cy), maj, minr, angle=angle,
                                                     edgecolor='red', lw=2, fill=False, linestyle='-',
@@ -1229,7 +1206,11 @@ for idx, fname in enumerate(file_list):
         print(f"    [ERROR] Failed to analyze {fname}: {e}")
 
 all_frames_df = pd.DataFrame(all_frames_data)
-excel_all_frames_path = "ellipse_fitting_summary_ALL_FRAMES.xlsx"
+# 부채꼴 모드에 따라 파일명 변경
+if BEAM_SHAPE_MODE == 'fan':
+    excel_all_frames_path = "nonellipse_fitting_summary_ALL_FRAMES.xlsx"
+else:
+    excel_all_frames_path = "ellipse_fitting_summary_ALL_FRAMES.xlsx"
 all_frames_df.to_excel(excel_all_frames_path, index=False)
 print(f"\n전체 프레임 분석 결과가 '{excel_all_frames_path}'에 저장되었습니다.")
 
@@ -1361,6 +1342,23 @@ fig_img.canvas.mpl_connect('key_press_event', on_key)
 
 results = [None] * num_files # Pre-allocate results list
 if __name__ == "__main__":
+    # 공용 Tk 루트 생성 (Matplotlib TkAgg와 계산기 모두 같은 루프 사용)
+    _root = tk.Tk()
+    _root.withdraw()
+
+    # Create calculator window early (before analysis starts)
+    calculator_window = None
+    calculator_instance = None
+    if create_calculator_window:
+        try:
+            calculator_window, calculator_instance = create_calculator_window(_root)
+            print("EUV Power Calculator window created successfully!")
+            print(f"[Main] Calculator instance: {calculator_instance}")
+        except Exception as e:
+            print(f"Failed to create calculator window: {e}")
+            import traceback
+            traceback.print_exc()
+    
     # frame_overrides 로드
     frame_overrides = load_frame_overrides()
     print("frame_overrides loaded:", frame_overrides)
@@ -1453,12 +1451,16 @@ if __name__ == "__main__":
 
     # Excel saving
     df = pd.DataFrame([res for res in results if res is not None]) # Filter out None entries if any failed critically
-    excel_filename = "ellipse_fitting_summary_multi_frame.xlsx"
+    # 부채꼴 모드에 따라 파일명 변경
+    if BEAM_SHAPE_MODE == 'fan':
+        excel_filename = "nonellipse_fitting_summary_multi_frame.xlsx"
+    else:
+        excel_filename = "ellipse_fitting_summary_multi_frame.xlsx"
     try:
         df.to_excel(excel_filename, index=False)
-        print(f"\nPlotting complete. Displayed frames summary saved to {excel_filename}")
     except Exception as e_excel:
         print(f"\nError saving to Excel: {e_excel}. Results may not be saved.")
+    print(f"\nPlotting complete. Displayed frames summary saved to {excel_filename}")
 
     # === 여기서 바로 frame_override.json 자동 생성 ===
     frame_override = {}
@@ -1487,8 +1489,7 @@ if __name__ == "__main__":
     print(f"Using colormap: {COLORMAP}, Intensity normalization: {INTENSITY_NORM}")
     print(f"μm Conversion Factor (PIXEL_SIZE): {PIXEL_SIZE} μm/px")
 
-    _root = tk.Tk()
-    _root.withdraw()
+    # Calculator should already be created above, just show matplotlib window now
     try:
         plt.show()
         _root.destroy()
