@@ -39,7 +39,7 @@ except ImportError:
 
 # ── Global Variables & Setup ──
 PIXEL_SIZE = 0.5        # Initial μm/px conversion factor
-TICK_INTERVAL = 2.0    # Tick interval in μm
+TICK_INTERVAL = 5.0    # Tick interval in μm
 BEAM_SHAPE_MODE = 'ellipse'  # 'ellipse' or 'fan' - beam fitting mode
 
 
@@ -316,9 +316,9 @@ def on_key(event):
                         
                         ax_img_key.set_xticks(xt)
                         ax_img_key.set_yticks(yt)
-                        ax_img_key.set_xticklabels([f"{x:.1f}" for x in xt_um])
+                        ax_img_key.set_xticklabels([f"{int(x)}" for x in xt_um])
                         # Y축이 반전되어 있으므로 labels도 역순으로 표시
-                        ax_img_key.set_yticklabels([f"{y:.1f}" for y in yt_um[::-1]])
+                        ax_img_key.set_yticklabels([f"{int(y)}" for y in yt_um[::-1]])
                 
                 event.canvas.draw_idle()
                 dialog.destroy()
@@ -968,6 +968,10 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                             ax_img.plot([x0m, x1m], [y0m, y1m], color='magenta', lw=1.5, label='Major Axis')
                             d_major, p_major = get_line_profile(roi_large, x0m_large, y0m_large, x1m_large, y1m_large)
                             ax_prof.plot(d_major, p_major, color='magenta', label='Major')
+                            
+                            # Store line profile data for Excel export
+                            ellipse_data['_profile_major_distance'] = d_major.tolist()
+                            ellipse_data['_profile_major_intensity'] = p_major.tolist()
 
                             # Minor axis (cyan)
                             dx_n, dy_n = -np.sin(angle_rad), np.cos(angle_rad)
@@ -984,6 +988,10 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                             ax_img.plot([x0n, x1n], [y0n, y1n], color='cyan', lw=1.5, label='Minor Axis')
                             d_minor, p_minor = get_line_profile(roi_large, x0n_large, y0n_large, x1n_large, y1n_large)
                             ax_prof.plot(d_minor, p_minor, color='cyan', label='Minor')
+                            
+                            # Store line profile data for Excel export
+                            ellipse_data['_profile_minor_distance'] = d_minor.tolist()
+                            ellipse_data['_profile_minor_intensity'] = p_minor.tolist()
 
                             # FWHM 계산 (profile 기준)
                             fwhm_major_px, fwhm_major_um = compute_fwhm_from_profile(d_major, p_major)
@@ -1088,9 +1096,9 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
             
             ax_img.set_xticks(x_tick_positions)
             ax_img.set_yticks(y_tick_positions)
-            ax_img.set_xticklabels([f"{x:.1f}" for x in xt_um])
+            ax_img.set_xticklabels([f"{int(x)}" for x in xt_um])
             # Y축이 반전되어 있으므로 labels도 역순으로 표시
-            ax_img.set_yticklabels([f"{y:.1f}" for y in yt_um[::-1]])
+            ax_img.set_yticklabels([f"{int(y)}" for y in yt_um[::-1]])
         else: # If manual limits are set, the ticks should reflect those limits in microns
             # Calculate ticks based on interval
             x_range = MANUAL_XLIM[1] - MANUAL_XLIM[0]
@@ -1107,9 +1115,9 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
             yt = yt_um / PIXEL_SIZE
             
             ax_img.set_xticks(xt); ax_img.set_yticks(yt)
-            ax_img.set_xticklabels([f"{x:.1f}" for x in xt_um])
+            ax_img.set_xticklabels([f"{int(x)}" for x in xt_um])
             # Y축이 반전되어 있으므로 labels도 역순으로 표시
-            ax_img.set_yticklabels([f"{y:.1f}" for y in yt_um[::-1]])
+            ax_img.set_yticklabels([f"{int(y)}" for y in yt_um[::-1]])
         ax_img.set_xlabel("X (μm)", fontsize=AXIS_FONTSIZE)
         ax_img.set_ylabel("Y (μm)", fontsize=AXIS_FONTSIZE)
         
@@ -1341,6 +1349,7 @@ fig_img.canvas.mpl_connect('key_press_event', on_key)
 # fig_prof.canvas.mpl_connect('key_press_event', on_key) # Optionally connect to profile window too
 
 results = [None] * num_files # Pre-allocate results list
+profile_data_list = [] # Store line profile data for Excel export
 if __name__ == "__main__":
     # 공용 Tk 루트 생성 (Matplotlib TkAgg와 계산기 모두 같은 루프 사용)
     _root = tk.Tk()
@@ -1454,10 +1463,68 @@ if __name__ == "__main__":
     # 부채꼴 모드에 따라 파일명 변경
     if BEAM_SHAPE_MODE == 'fan':
         excel_filename = "nonellipse_fitting_summary_multi_frame.xlsx"
+        profile_excel_filename = "nonellipse_line_profiles.xlsx"
     else:
         excel_filename = "ellipse_fitting_summary_multi_frame.xlsx"
+        profile_excel_filename = "ellipse_line_profiles.xlsx"
     try:
-        df.to_excel(excel_filename, index=False)
+        # Save summary data (remove profile data columns before saving)
+        df_summary = df.copy()
+        profile_cols = ['_profile_major_distance', '_profile_major_intensity', 
+                        '_profile_minor_distance', '_profile_minor_intensity']
+        for col in profile_cols:
+            if col in df_summary.columns:
+                df_summary = df_summary.drop(columns=[col])
+        df_summary.to_excel(excel_filename, index=False)
+        
+        # Save line profile data (file별로 시트 분리)
+        profile_data_by_file = {}  # {filename: [rows]}
+        for res in results:
+            if res is None:
+                continue
+            filename = res.get('Filename', '')
+            frame = res.get('Frame', 0)
+            
+            if filename not in profile_data_by_file:
+                profile_data_by_file[filename] = []
+            
+            # Major profile
+            if '_profile_major_distance' in res and '_profile_major_intensity' in res:
+                major_dist = res['_profile_major_distance']
+                major_int = res['_profile_major_intensity']
+                if major_dist and major_int and len(major_dist) == len(major_int):
+                    for d, i in zip(major_dist, major_int):
+                        profile_data_by_file[filename].append({
+                            'Frame': frame,
+                            'Axis': 'Major',
+                            'Distance (μm)': d,
+                            'Intensity': i
+                        })
+            
+            # Minor profile
+            if '_profile_minor_distance' in res and '_profile_minor_intensity' in res:
+                minor_dist = res['_profile_minor_distance']
+                minor_int = res['_profile_minor_intensity']
+                if minor_dist and minor_int and len(minor_dist) == len(minor_int):
+                    for d, i in zip(minor_dist, minor_int):
+                        profile_data_by_file[filename].append({
+                            'Frame': frame,
+                            'Axis': 'Minor',
+                            'Distance (μm)': d,
+                            'Intensity': i
+                        })
+        
+        if profile_data_by_file:
+            # ExcelWriter를 사용하여 파일별로 시트 생성
+            with pd.ExcelWriter(profile_excel_filename, engine='openpyxl') as writer:
+                for filename, rows in profile_data_by_file.items():
+                    if rows:  # 데이터가 있는 경우만 시트 생성
+                        df_file_profiles = pd.DataFrame(rows)
+                        # 시트 이름은 파일명에서 확장자 제거하고 최대 31자로 제한 (Excel 시트 이름 제한)
+                        sheet_name = os.path.splitext(filename)[0][:31]
+                        df_file_profiles.to_excel(writer, sheet_name=sheet_name, index=False)
+            print(f"\nLine profile data saved to {profile_excel_filename} ({len(profile_data_by_file)} sheets)")
+        
     except Exception as e_excel:
         print(f"\nError saving to Excel: {e_excel}. Results may not be saved.")
     print(f"\nPlotting complete. Displayed frames summary saved to {excel_filename}")
@@ -1465,9 +1532,9 @@ if __name__ == "__main__":
     # === 여기서 바로 frame_override.json 자동 생성 ===
     frame_override = {}
     # 아래 groupby 및 'notnull', 'loc', 'idxmin' 사용에서도 'DataFrame'이 아니라 ndarray 등에 써서 linter가 회색/빨간줄 낼 수 있음!
-    # df가 진짜 DataFrame임을 확실히 하세요.
-    if not df.empty and "Major Length (px)" in df and "Minor Length (px)" in df:
-        for fname, group in df.groupby("Filename"):
+    # df_summary가 진짜 DataFrame임을 확실히 하세요.
+    if not df_summary.empty and "Major Length (px)" in df_summary and "Minor Length (px)" in df_summary:
+        for fname, group in df_summary.groupby("Filename"):
             # 첫 번째 프레임(보통 Frame==1)은 제외
             group = group[group["Frame"] > 1].copy()
             # Major/Minor 값이 유효한 경우만
@@ -1477,7 +1544,7 @@ if __name__ == "__main__":
             group["RatioDiff"] = (group["Ratio"] - 1).abs()
             if not group.empty:
                 best_row = group.loc[group["RatioDiff"].idxmin()]
-                plot_idx = df["Filename"].drop_duplicates().tolist().index(fname)
+                plot_idx = df_summary["Filename"].drop_duplicates().tolist().index(fname)
                 frame_override[plot_idx] = int(best_row["Frame"]) - 1  # Frame이 1부터 시작이면 -1
 
         with open("frame_override.json", "w", encoding="utf-8") as f:
