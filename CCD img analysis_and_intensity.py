@@ -37,6 +37,18 @@ except ImportError:
     create_calculator_window = None
     update_calculator_ccd_counts = None
 
+# Import Line Profile Saver
+try:
+    from line_profile_saver import save_line_profiles
+    print("[Module Import] line_profile_saver 모듈 로드 성공")
+except ImportError as e:
+    print(f"Warning: line_profile_saver module not found. Line profile saving will not be available.")
+    print(f"  Import error: {e}")
+    save_line_profiles = None
+except Exception as e:
+    print(f"Warning: line_profile_saver module import failed with error: {e}")
+    save_line_profiles = None
+
 # ── Global Variables & Setup ──
 PIXEL_SIZE = 0.5        # Initial μm/px conversion factor
 TICK_INTERVAL = 5.0    # Tick interval in μm
@@ -588,12 +600,20 @@ def calculate_ellipse_data(filepath, frame_idx, total_frames, metadata, fname_sh
                             d_major, p_major = get_line_profile(roi, x0m, y0m, x1m, y1m)
                             _, fwhm_major_um = compute_fwhm_from_profile(d_major, p_major)
                             fwhm_major_px = fwhm_major_um / PIXEL_SIZE
+                            
+                            # Store line profile data for Excel export
+                            ellipse_data['_profile_major_distance'] = d_major.tolist()
+                            ellipse_data['_profile_major_intensity'] = p_major.tolist()
 
                             x0n, y0n = peak_x_roi - dx_min * length, peak_y_roi - dy_min * length
                             x1n, y1n = peak_x_roi + dx_min * length, peak_y_roi + dy_min * length
                             d_minor, p_minor = get_line_profile(roi, x0n, y0n, x1n, y1n)
                             _, fwhm_minor_um = compute_fwhm_from_profile(d_minor, p_minor)
                             fwhm_minor_px = fwhm_minor_um / PIXEL_SIZE
+                            
+                            # Store line profile data for Excel export
+                            ellipse_data['_profile_minor_distance'] = d_minor.tolist()
+                            ellipse_data['_profile_minor_intensity'] = p_minor.tolist()
 
                             ellipse_data["FWHM Major (px)"] = fwhm_major_px
                             ellipse_data["FWHM Minor (px)"] = fwhm_minor_px
@@ -1206,12 +1226,19 @@ for idx, fname in enumerate(file_list):
     try:
         metadata = load_spe_metadata(full_path)
         num_frames = metadata[2]
-        if num_frames == 0: continue
+        if num_frames == 0:
+            print(f"    [SKIP] {fname}: 프레임이 없습니다.")
+            continue
+        frames_collected = 0
         for i in range(num_frames):
             frame_data = calculate_ellipse_data(full_path, i, num_frames, metadata, fname)
             all_frames_data.append(frame_data)
+            frames_collected += 1
+        print(f"    [OK] {fname}: {frames_collected}개 프레임 데이터 수집 완료")
     except Exception as e:
         print(f"    [ERROR] Failed to analyze {fname}: {e}")
+        import traceback
+        traceback.print_exc()
 
 all_frames_df = pd.DataFrame(all_frames_data)
 # 부채꼴 모드에 따라 파일명 변경
@@ -1219,8 +1246,19 @@ if BEAM_SHAPE_MODE == 'fan':
     excel_all_frames_path = "nonellipse_fitting_summary_ALL_FRAMES.xlsx"
 else:
     excel_all_frames_path = "ellipse_fitting_summary_ALL_FRAMES.xlsx"
-all_frames_df.to_excel(excel_all_frames_path, index=False)
-print(f"\n전체 프레임 분석 결과가 '{excel_all_frames_path}'에 저장되었습니다.")
+
+# ALL_FRAMES 데이터 저장
+try:
+    if not all_frames_df.empty:
+        all_frames_df.to_excel(excel_all_frames_path, index=False)
+        print(f"\n전체 프레임 분석 결과가 '{excel_all_frames_path}'에 저장되었습니다.")
+        print(f"  총 {len(all_frames_df)}개의 프레임 데이터가 저장되었습니다.")
+    else:
+        print(f"\n경고: 분석된 프레임 데이터가 없어 '{excel_all_frames_path}' 파일을 생성하지 않았습니다.")
+except Exception as e_all_frames:
+    print(f"\n오류: '{excel_all_frames_path}' 파일 저장 중 오류가 발생했습니다: {e_all_frames}")
+    import traceback
+    traceback.print_exc()
 
 # --- STAGE 2: Find best frames and update JSON ---
 new_overrides = {}
@@ -1477,53 +1515,19 @@ if __name__ == "__main__":
                 df_summary = df_summary.drop(columns=[col])
         df_summary.to_excel(excel_filename, index=False)
         
-        # Save line profile data (file별로 시트 분리)
-        profile_data_by_file = {}  # {filename: [rows]}
-        for res in results:
-            if res is None:
-                continue
-            filename = res.get('Filename', '')
-            frame = res.get('Frame', 0)
-            
-            if filename not in profile_data_by_file:
-                profile_data_by_file[filename] = []
-            
-            # Major profile
-            if '_profile_major_distance' in res and '_profile_major_intensity' in res:
-                major_dist = res['_profile_major_distance']
-                major_int = res['_profile_major_intensity']
-                if major_dist and major_int and len(major_dist) == len(major_int):
-                    for d, i in zip(major_dist, major_int):
-                        profile_data_by_file[filename].append({
-                            'Frame': frame,
-                            'Axis': 'Major',
-                            'Distance (μm)': d,
-                            'Intensity': i
-                        })
-            
-            # Minor profile
-            if '_profile_minor_distance' in res and '_profile_minor_intensity' in res:
-                minor_dist = res['_profile_minor_distance']
-                minor_int = res['_profile_minor_intensity']
-                if minor_dist and minor_int and len(minor_dist) == len(minor_int):
-                    for d, i in zip(minor_dist, minor_int):
-                        profile_data_by_file[filename].append({
-                            'Frame': frame,
-                            'Axis': 'Minor',
-                            'Distance (μm)': d,
-                            'Intensity': i
-                        })
-        
-        if profile_data_by_file:
-            # ExcelWriter를 사용하여 파일별로 시트 생성
-            with pd.ExcelWriter(profile_excel_filename, engine='openpyxl') as writer:
-                for filename, rows in profile_data_by_file.items():
-                    if rows:  # 데이터가 있는 경우만 시트 생성
-                        df_file_profiles = pd.DataFrame(rows)
-                        # 시트 이름은 파일명에서 확장자 제거하고 최대 31자로 제한 (Excel 시트 이름 제한)
-                        sheet_name = os.path.splitext(filename)[0][:31]
-                        df_file_profiles.to_excel(writer, sheet_name=sheet_name, index=False)
-            print(f"\nLine profile data saved to {profile_excel_filename} ({len(profile_data_by_file)} sheets)")
+        # Save line profile data using the separate module
+        # all_frames_data를 사용하여 각 파일별로 best frame을 찾아 저장
+        if save_line_profiles:
+            print(f"\n[Main] Line profile 저장 모듈 호출 중...")
+            # all_frames_data는 STAGE 1에서 생성된 모든 프레임 데이터
+            success = save_line_profiles(all_frames_data, profile_excel_filename)
+            if success:
+                print(f"[Main] Line profile 저장 성공")
+            else:
+                print(f"[Main] Line profile 저장 실패 또는 데이터 없음")
+        else:
+            print("\n[Main] Warning: Line profile saving module not available. Skipping line profile export.")
+            print(f"  save_line_profiles = {save_line_profiles}")
         
     except Exception as e_excel:
         print(f"\nError saving to Excel: {e_excel}. Results may not be saved.")

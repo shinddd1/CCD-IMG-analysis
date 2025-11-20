@@ -42,6 +42,13 @@ pip install numpy matplotlib opencv-python pandas scipy openpyxl
 - `roi_analysis`: 고급 ROI 분석 기능 (없어도 기본 기능 사용 가능)
 - `euv_power_calculator`: EUV 파워 계산기 (없어도 기본 기능 사용 가능)
 
+### 모듈 구조
+
+- `CCD img analysis_and_intensity.py`: 메인 분석 프로그램
+- `line_profile_saver.py`: Line Profile 데이터 저장 모듈
+- `roi_analysis.py`: ROI 분석 모듈
+- `euv_power_calculator.py`: EUV 파워 계산기 모듈
+
 ## 사용 방법
 
 ### 1. 프로그램 실행
@@ -101,9 +108,14 @@ python "CCD img analysis_and_intensity.py"
 - **타원 모드**: `ellipse_line_profiles.xlsx`
 - **부채꼴 모드**: `nonellipse_line_profiles.xlsx`
 
-**파일별로 시트가 분리되어 저장됩니다:**
-- 각 시트: 파일명 (확장자 제외)
-- 컬럼: Frame, Axis (Major/Minor), Distance (μm), Intensity
+**통합 엑셀 파일에 파일별로 시트가 분리되어 저장됩니다:**
+- 각 시트: 파일명 (확장자 제외, 최대 31자)
+- 각 시트의 컬럼 구조:
+  - `Major Distance (μm)`: Major 축 거리 데이터
+  - `Major Intensity`: Major 축 강도 데이터
+  - `Minor Distance (μm)`: Minor 축 거리 데이터
+  - `Minor Intensity`: Minor 축 강도 데이터
+- 각 파일의 Best Frame 데이터만 저장됨 (Major/Minor 비율이 1에 가장 가까운 프레임)
 
 ### 4. 설정 파일
 
@@ -144,6 +156,12 @@ Line profile을 기반으로 Full-Width at Half-Maximum을 계산합니다.
 ### 4. 최적 프레임 자동 선택
 
 모든 프레임을 분석하여 Major/Minor 비율이 가장 1에 가까운 프레임을 자동으로 선택합니다.
+
+### 5. Line Profile 저장
+
+- 각 파일별로 Best Frame을 자동으로 찾아 Line Profile 데이터를 추출
+- 통합 엑셀 파일에 각 파일별로 시트를 생성하여 저장
+- Major/Minor 축의 Distance와 Intensity 데이터를 4개 열로 구성
 
 ## 문제 해결
 
