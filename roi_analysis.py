@@ -53,47 +53,96 @@ def fit_ellipse_roi(image, th_e2, peak_y, peak_x):
 
 def fit_fan_shape_roi(image, th_e2, peak_y, peak_x):
     """
-    부채꼴 형태 빔에 대한 ROI 계산
+    1/e² 경계를 찾아 이어지는 도형 생성 (부채꼴 형태가 아니어도 적용)
+    1/e²가 없으면 임계값을 낮춰가며 연결된 영역을 찾음
     
     Args:
         image: 입력 이미지
-        th_e2: 임계값
+        th_e2: 1/e² 임계값 (시작값)
         peak_y, peak_x: 피크 위치
     
     Returns:
         contour, mask, (cx, cy), angle
     """
-    mask_e2 = (image > th_e2).astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_e2, connectivity=8)
+    peak_val = image[int(peak_y), int(peak_x)]
+    image_min = np.min(image)
+    image_max = np.max(image)
     
-    if num_labels <= 1:
-        return None
+    # 임계값 후보들: 1/e²부터 점진적으로 낮춰가며 시도
+    # 최소한 peak의 10%까지는 시도
+    min_threshold = max(image_min, peak_val * 0.1)
+    threshold_candidates = []
     
-    peak_label = labels[int(peak_y), int(peak_x)]
-    if peak_label == 0 and num_labels > 1:
-        areas = stats[1:, cv2.CC_STAT_AREA]
-        if len(areas) > 0:
-            peak_label = np.argmax(areas) + 1
+    # 1/e²부터 시작
+    threshold_candidates.append(th_e2)
     
-    if peak_label != 0:
-        mask_peak = (labels == peak_label).astype(np.uint8)
-        contours, _ = cv2.findContours(mask_peak, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            cnt = max(contours, key=cv2.contourArea)
+    # 1/e²가 너무 낮으면 더 높은 값들도 시도
+    if th_e2 < peak_val * 0.3:
+        threshold_candidates.extend([
+            peak_val * 0.5,
+            peak_val * 0.4,
+            peak_val * 0.3
+        ])
+    
+    # 점진적으로 낮춰가며 시도 (0.9, 0.8, 0.7, ... 0.1)
+    for factor in [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.15, 0.1]:
+        candidate = max(min_threshold, peak_val * factor)
+        if candidate not in threshold_candidates and candidate >= min_threshold:
+            threshold_candidates.append(candidate)
+    
+    # 각 임계값으로 시도
+    for threshold in threshold_candidates:
+        mask_e2 = (image > threshold).astype(np.uint8)
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_e2, connectivity=8)
+        
+        if num_labels <= 1:
+            continue
+        
+        # 피크가 포함된 라벨 찾기
+        peak_label = labels[int(peak_y), int(peak_x)]
+        
+        # 피크가 배경(0)에 있으면 가장 큰 영역 선택
+        if peak_label == 0 and num_labels > 1:
+            areas = stats[1:, cv2.CC_STAT_AREA]
+            if len(areas) > 0:
+                peak_label = np.argmax(areas) + 1
+        
+        if peak_label != 0:
+            mask_peak = (labels == peak_label).astype(np.uint8)
             
-            # 부채꼴의 중심 계산
-            M = cv2.moments(cnt)
-            if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-            else:
-                cx, cy = int(peak_x), int(peak_y)
+            # Morphological closing으로 얇거나 불연속인 부분 연결
+            # 작은 gap을 메우고 얇은 부분을 두껍게 만들어서 shape을 보존
+            kernel_size = 3  # 작은 gap을 메우기 위한 커널 크기
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
             
-            # 각도 계산 (피크와 중심을 기준)
-            angle = np.arctan2(peak_y - cy, peak_x - cx) * 180 / np.pi
+            # Closing: dilation 후 erosion으로 작은 gap 메우기
+            # iterations=2로 설정하여 작은 불연속 부분도 연결
+            mask_closed = cv2.morphologyEx(mask_peak, cv2.MORPH_CLOSE, kernel, iterations=2)
             
-            return cnt, mask_peak, (cx, cy), angle
+            contours, _ = cv2.findContours(mask_closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            if contours:
+                cnt = max(contours, key=cv2.contourArea)
+                
+                # 최소한 3개 점은 있어야 함
+                if len(cnt) < 3:
+                    continue
+                
+                # 중심 계산
+                M = cv2.moments(cnt)
+                if M["m00"] != 0:
+                    cx = int(M["m10"] / M["m00"])
+                    cy = int(M["m01"] / M["m00"])
+                else:
+                    cx, cy = int(peak_x), int(peak_y)
+                
+                # 각도 계산 (피크와 중심을 기준)
+                angle = np.arctan2(peak_y - cy, peak_x - cx) * 180 / np.pi
+                
+                # 성공적으로 찾았으면 반환 (원본 mask_peak 대신 mask_closed 사용)
+                return cnt, mask_closed, (cx, cy), angle
     
+    # 모든 임계값 시도 실패
     return None
 
 
