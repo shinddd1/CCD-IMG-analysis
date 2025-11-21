@@ -20,7 +20,7 @@ def fit_ellipse_roi(image, th_e2, peak_y, peak_x):
     Returns:
         중심, 장축/단축, 각도, 마스크
     """
-    mask_e2 = (image > th_e2).astype(np.uint8)
+    mask_e2 = (image >= th_e2).astype(np.uint8)
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_e2, connectivity=8)
     
     if num_labels <= 1:
@@ -51,10 +51,52 @@ def fit_ellipse_roi(image, th_e2, peak_y, peak_x):
     return None
 
 
-def fit_fan_shape_roi(image, th_e2, peak_y, peak_x):
+def fit_ellipse_no_pinhole_roi(image, th_e2):
     """
-    1/e² 경계를 찾아 이어지는 도형 생성 (부채꼴 형태가 아니어도 적용)
-    1/e²가 없으면 임계값을 낮춰가며 연결된 영역을 찾음
+    핀홀 없음 (타원) 모드: 1/e² 마스크 경계에서 가장 큰 contour를 찾아 타원 피팅
+    
+    Args:
+        image: 입력 이미지
+        th_e2: 1/e² 임계값
+    
+    Returns:
+        (contour, (cx, cy), (maj, minr), angle) 또는 None
+        contour: RAW 경계선용 contour
+        (cx, cy): 타원 중심
+        (maj, minr): 장축/단축
+        angle: 타원 각도
+    """
+    mask_e2 = (image > th_e2).astype(np.uint8)
+    
+    # 연결된 컴포넌트 분석 없이 바로 contour 찾기
+    contours_e2, _ = cv2.findContours(mask_e2, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours_e2:
+        return None
+    
+    # 가장 큰 contour 선택
+    cnt = max(contours_e2, key=cv2.contourArea)
+    
+    if len(cnt) < 5:
+        return None
+    
+    # 타원 피팅
+    ellipse = cv2.fitEllipse(cnt)
+    (cx, cy), (maj, minr), angle = ellipse
+    
+    # Swap if needed
+    if maj < minr:
+        maj, minr = minr, maj
+        angle = (angle + 90) % 180
+    
+    return cnt, (cx, cy), (maj, minr), angle
+
+
+def fit_freeform_shape_roi(image, th_e2, peak_y, peak_x):
+    """
+    1/e² 경계를 찾아 닫힌 자유 도형 생성
+    1/e²가 없으면 임계값을 낮춰가며 연결된 영역을 찾고,
+    morphological closing을 적용하여 얇거나 불연속인 부분을 메워 닫힌 도형 생성
     
     Args:
         image: 입력 이미지
@@ -146,13 +188,12 @@ def fit_fan_shape_roi(image, th_e2, peak_y, peak_x):
     return None
 
 
-def get_fan_ellipse_mask(roi, cx, cy, contour):
+def contour_to_mask(roi, contour):
     """
-    부채꼴 contour를 마스크로 변환
+    Contour를 마스크로 변환
     
     Args:
         roi: ROI 이미지
-        cx, cy: 중심점
         contour: contour 데이터
     
     Returns:
@@ -171,10 +212,10 @@ def get_fan_ellipse_mask(roi, cx, cy, contour):
     return mask
 
 
-def compute_fitted_fan_shape(contour, cx, cy, angle):
+def smooth_contour(contour, cx, cy, angle):
     """
-    자유형 contour를 smoothing하여 fitted shape 생성
-    원본 contour를 따라가되 부드럽게 만듦
+    자유형 contour를 smoothing하여 부드러운 shape 생성
+    원본 contour를 따라가되 노이즈를 제거하고 부드럽게 만듦
     
     Args:
         contour: contour 데이터
@@ -182,7 +223,7 @@ def compute_fitted_fan_shape(contour, cx, cy, angle):
         angle: 중심 각도 (도)
     
     Returns:
-        fitted_points: fitted fan shape의 좌표 배열 (Nx2)
+        smoothed_points: smoothed contour의 좌표 배열 (Nx2)
     """
     if contour is None or len(contour) < 3:
         return None
@@ -307,9 +348,9 @@ def calculate_roi_complex(roi, th_e2, peak_y_roi, peak_x_roi):
     ellipse_result = fit_ellipse_roi(roi, th_e2, peak_y_roi, peak_x_roi)
     
     if ellipse_result is None:
-        # 타원 실패 시 부채꼴 시도
-        fan_result = fit_fan_shape_roi(roi, th_e2, peak_y_roi, peak_x_roi)
-        return fan_result
+        # 타원 실패 시 자유 도형 시도 (1/e² 경계 + closing)
+        freeform_result = fit_freeform_shape_roi(roi, th_e2, peak_y_roi, peak_x_roi)
+        return freeform_result
     else:
         return ellipse_result
 

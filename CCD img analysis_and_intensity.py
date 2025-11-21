@@ -21,10 +21,11 @@ try:
     from roi_analysis import (
         detect_beam_shape,
         fit_ellipse_roi,
-        fit_fan_shape_roi,
+        fit_ellipse_no_pinhole_roi,
+        fit_freeform_shape_roi,
         calculate_roi_complex,
         calculate_integrated_intensity,
-        compute_fitted_fan_shape
+        smooth_contour
     )
 except ImportError:
     print("Warning: roi_analysis module not found. Using default ellipse fitting only.")
@@ -835,19 +836,19 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                     if contours_e2:
                         cnt = max(contours_e2, key=cv2.contourArea)
                         
-                        # BEAM_SHAPE_MODE에 따라 타원 또는 부채꼴 피팅
+                        # BEAM_SHAPE_MODE에 따라 타원 또는 자유 도형 피팅
                         if BEAM_SHAPE_MODE == 'fan':
-                            # 부채꼴 피팅
+                            # 자유 도형 피팅 (1/e² 경계 + closing)
                             try:
-                                fan_result = fit_fan_shape_roi(roi_large, th_e2, peak_y_roi_large, peak_x_roi_large)
-                                if fan_result:
-                                    cnt_fan, mask_fan, (cx_large, cy_large), angle = fan_result
+                                freeform_result = fit_freeform_shape_roi(roi_large, th_e2, peak_y_roi_large, peak_x_roi_large)
+                                if freeform_result:
+                                    cnt_freeform, mask_freeform, (cx_large, cy_large), angle = freeform_result
                                     # roi_large 좌표를 roi 좌표계로 변환
                                     cx = cx_large - crop_offset_x
                                     cy = cy_large - crop_offset_y
                                     
                                     # Contour를 roi 좌표계로 변환
-                                    cnt_roi = cnt_fan.reshape(-1, 2).copy()
+                                    cnt_roi = cnt_freeform.reshape(-1, 2).copy()
                                     print(f"[DEBUG] Before transform cnt_roi: x range: {cnt_roi[:, 0].min():.2f} - {cnt_roi[:, 0].max():.2f}, y range: {cnt_roi[:, 1].min():.2f} - {cnt_roi[:, 1].max():.2f}")
                                     cnt_roi[:, 0] -= crop_offset_x
                                     cnt_roi[:, 1] -= crop_offset_y
@@ -857,55 +858,55 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
                                     # Draw RAW contour
                                     ax_img.plot(cnt_roi[:, 0], cnt_roi[:, 1], 
                                               color='red', linewidth=3, linestyle='-', 
-                                              label='1/e² RAW (Fan)', alpha=1.0, marker='o', markersize=1)
-                                    print(f"[DEBUG] Plotted 1/e² RAW (Fan) with {len(cnt_roi)} points")
+                                              label='1/e² RAW (Freeform)', alpha=1.0, marker='o', markersize=1)
+                                    print(f"[DEBUG] Plotted 1/e² RAW (Freeform) with {len(cnt_roi)} points")
                                     
                                     # 마스크 생성 및 CCD Counts 계산
                                     yy, xx = np.indices(roi.shape)
-                                    mask_fan_roi = np.zeros(roi.shape, dtype=np.uint8)
+                                    mask_freeform_roi = np.zeros(roi.shape, dtype=np.uint8)
                                     cnt_points_roi = cnt_roi.astype(int)
-                                    cv2.fillPoly(mask_fan_roi, [cnt_points_roi], 1)
-                                    mask_fan_roi = mask_fan_roi.astype(bool)
+                                    cv2.fillPoly(mask_freeform_roi, [cnt_points_roi], 1)
+                                    mask_freeform_roi = mask_freeform_roi.astype(bool)
                                     
-                                    if np.any(mask_fan_roi):
-                                        ccd_counts = float(np.sum(roi[mask_fan_roi]))
+                                    if np.any(mask_freeform_roi):
+                                        ccd_counts = float(np.sum(roi[mask_freeform_roi]))
                                         ellipse_data["CCD Counts"] = ccd_counts
                                         
                                         # Update calculator with CCD Counts
                                         if update_calculator_ccd_counts:
                                             update_calculator_ccd_counts(ccd_counts)
                                         
-                                        # Calculate fan shape area
-                                        area_px = np.sum(mask_fan_roi)
+                                        # Calculate freeform shape area
+                                        area_px = np.sum(mask_freeform_roi)
                                         ellipse_data["Area (μm²)"] = area_px * PIXEL_SIZE * PIXEL_SIZE
                                         
                                         # EUV Power will be calculated in the calculator
                                         ellipse_data["Collected Power"] = None
                                     
-                                    # Fitted Fan Shape 계산 및 표시
+                                    # Smoothed contour 계산 및 표시
                                     try:
-                                        print(f"[DEBUG] Computing fitted fan shape...")
-                                        print(f"[DEBUG] cnt_fan shape: {cnt_fan.shape}, cx_large: {cx_large}, cy_large: {cy_large}")
-                                        fitted_shape = compute_fitted_fan_shape(cnt_fan, cx_large, cy_large, angle)
-                                        print(f"[DEBUG] fitted_shape result: {fitted_shape}")
-                                        if fitted_shape is not None and len(fitted_shape) > 0:
-                                            fitted_shape_roi = fitted_shape.copy()
-                                            print(f"[DEBUG] Before transform: x range: {fitted_shape_roi[:, 0].min():.2f} - {fitted_shape_roi[:, 0].max():.2f}, y range: {fitted_shape_roi[:, 1].min():.2f} - {fitted_shape_roi[:, 1].max():.2f}")
-                                            fitted_shape_roi[:, 0] -= crop_offset_x
-                                            fitted_shape_roi[:, 1] -= crop_offset_y
-                                            print(f"[DEBUG] After transform: x range: {fitted_shape_roi[:, 0].min():.2f} - {fitted_shape_roi[:, 0].max():.2f}, y range: {fitted_shape_roi[:, 1].min():.2f} - {fitted_shape_roi[:, 1].max():.2f}")
-                                            ax_img.plot(fitted_shape_roi[:, 0], fitted_shape_roi[:, 1], 
+                                        print(f"[DEBUG] Computing smoothed contour...")
+                                        print(f"[DEBUG] cnt_freeform shape: {cnt_freeform.shape}, cx_large: {cx_large}, cy_large: {cy_large}")
+                                        smoothed_shape = smooth_contour(cnt_freeform, cx_large, cy_large, angle)
+                                        print(f"[DEBUG] smoothed_shape result: {smoothed_shape}")
+                                        if smoothed_shape is not None and len(smoothed_shape) > 0:
+                                            smoothed_shape_roi = smoothed_shape.copy()
+                                            print(f"[DEBUG] Before transform: x range: {smoothed_shape_roi[:, 0].min():.2f} - {smoothed_shape_roi[:, 0].max():.2f}, y range: {smoothed_shape_roi[:, 1].min():.2f} - {smoothed_shape_roi[:, 1].max():.2f}")
+                                            smoothed_shape_roi[:, 0] -= crop_offset_x
+                                            smoothed_shape_roi[:, 1] -= crop_offset_y
+                                            print(f"[DEBUG] After transform: x range: {smoothed_shape_roi[:, 0].min():.2f} - {smoothed_shape_roi[:, 0].max():.2f}, y range: {smoothed_shape_roi[:, 1].min():.2f} - {smoothed_shape_roi[:, 1].max():.2f}")
+                                            ax_img.plot(smoothed_shape_roi[:, 0], smoothed_shape_roi[:, 1], 
                                                       color='cyan', linewidth=2, 
-                                                      label='1/e² Fitting (Fan)', alpha=0.8)
-                                            print(f"[Fitted Fan Shape] Points: {len(fitted_shape)}, plotted successfully")
+                                                      label='1/e² Fitting (Freeform)', alpha=0.8)
+                                            print(f"[Smoothed Contour] Points: {len(smoothed_shape)}, plotted successfully")
                                         else:
-                                            print(f"[Warning] fitted_shape is None or empty")
+                                            print(f"[Warning] smoothed_shape is None or empty")
                                     except Exception as e:
                                         import traceback
-                                        print(f"[Error computing fitted fan shape]: {e}")
+                                        print(f"[Error computing smoothed contour]: {e}")
                                         traceback.print_exc()
                             except Exception as e:
-                                print(f"[Error in fan fitting]: {e}")
+                                print(f"[Error in freeform fitting]: {e}")
                         
                         if len(cnt) >= 5 and BEAM_SHAPE_MODE == 'ellipse':
                             # Continue with ellipse fitting only if in ellipse mode
@@ -1143,7 +1144,7 @@ def process_and_display_frame(ax_img, ax_prof, filepath, frame_idx,
         
         # 범례 순서 지정: Major/Minor Axis 먼저, 그 다음 1/e², FWHM
         handles, labels = ax_img.get_legend_handles_labels()
-        desired_order = ['Major Axis', 'Minor Axis', '1/e² RAW', '1/e² RAW (Fan)', '1/e² Ellipse', '1/e² Fitting', '1/e² Fitting (Fan)', 'FWHM RAW', 'FWHM Ellipse', 'Peak Intensity']
+        desired_order = ['Major Axis', 'Minor Axis', '1/e² RAW', '1/e² RAW (Freeform)', '1/e² Ellipse', '1/e² Fitting', '1/e² Fitting (Freeform)', 'FWHM RAW', 'FWHM Ellipse', 'Peak Intensity']
         # 원하는 순서대로 정렬
         ordered_handles = []
         ordered_labels = []
